@@ -144,10 +144,26 @@ struct my_ingress_metadata_t {
     bit<8> final_class;
     bit<8> classified_flag;
 
-    bit<40> codeword0;
-    bit<40> codeword1;
-    bit<40> codeword2;
-    bit<480> codeword3;
+    bit<9> codeword0_0;
+    bit<11> codeword0_1;
+    bit<20> codeword0_2;
+
+    bit<13> codeword1_0;
+    bit<7> codeword1_1;
+    bit<20> codeword1_2;
+
+    bit<15> codeword2_0;
+    bit<7> codeword2_1;
+    bit<18> codeword2_2;
+
+    bit<67> codeword3_0;
+    bit<69> codeword3_1;
+    bit<105> codeword3_2;
+    bit<90> codeword3_3;
+    bit<63> codeword3_4;
+    bit<86> codeword3_5;
+
+
 
     bit<8> digest_info; // used for either class or collision info
 
@@ -312,19 +328,6 @@ control MyIngress(
         reg_pkt_count.write((bit<32>)register_index, meta.pkt_count);
     }
 
-    register<bit<16>>(MAX_REGISTER_ENTRIES) reg_pkt_len_max;
-    /* Register read action */
-    // TODO
-    // action read_pkt_len_max(bit<INDEX_WIDTH> register_index) {
-    //     reg_pkt_len_max.read(???, (bit<32>)register_index);
-    //     if (meta.is_first == 1){
-    //         reg_pkt_len_max.write((bit<32>)register_index, hdr.ipv4.total_len);
-    //     }
-    //     else if (hdr.ipv4.total_len > ???){
-    //         reg_pkt_len_max.write((bit<32>)register_index, hdr.ipv4.total_len);
-    //     }
-    // }
-
 
     register<bit<32>>(MAX_REGISTER_ENTRIES) reg_flow_iat_max;
     /* Register read action */
@@ -405,47 +408,41 @@ control MyIngress(
     /* Feature table actions */
     // First model - [[9, 11, 20], [13, 7, 20], [15, 7, 18]]
     action SetCode0(bit<9> code0, bit<13> code1, bit<15> code2) {
-        meta.codeword0[39:31] = code0;
-        meta.codeword1[39:27] = code1;
-        meta.codeword2[39:25] = code2;
+        meta.codeword0_0 = code0;
+        meta.codeword1_0 = code1;
+        meta.codeword2_0 = code2;
     }
     action SetCode1(bit<11> code0, bit<7> code1, bit<7> code2) {
-        meta.codeword0[30:20] = code0;
-        meta.codeword1[26:20] = code1;
-        meta.codeword2[24:18] = code2;
+        meta.codeword0_1 = code0;
+        meta.codeword1_1 = code1;
+        meta.codeword2_1 = code2;
     }
     action SetCode2(bit<20> code0, bit<20> code1, bit<18> code2) {
-        meta.codeword0[19:0] = code0;
-        meta.codeword1[19:0] = code1;
-        meta.codeword2[17:0] = code2;
+        meta.codeword0_2 = code0;
+        meta.codeword1_2 = code1;
+        meta.codeword2_2 = code2;
     }
 
     // Second model
     // [[67, 69, 105, 90, 63, 86]]
     /* Feature table actions */
     action SetCode3(bit<67> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[479:413] = code0;
+        meta.codeword3_0 = code0;
     }
     action SetCode4(bit<69> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[412:344] = code0;
+        meta.codeword3_1 = code0;
     }
     action SetCode5(bit<105> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[343:239] = code0;
+        meta.codeword3_2 = code0;
     }
      action SetCode6(bit<90> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[238:149] = code0;
+        meta.codeword3_3 = code0;
     }
     action SetCode7(bit<63> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[148:86] = code0;
+        meta.codeword3_4 = code0;
     }
     action SetCode8(bit<86> code0) {
-        // TODO : Use david fix
-        // meta.codeword3[85:0] = code0;
+        meta.codeword3_5 = code0;
     }
 
 
@@ -522,25 +519,44 @@ control MyIngress(
 
     /* Code tables */
 	table code_table0{
-	    key = {meta.codeword0: ternary;}
+	    key = {
+            meta.codeword0_0: ternary;
+            meta.codeword0_1: ternary;
+            meta.codeword0_2: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass0;}
 	    size = 41;
         const default_action = nop();
 	}
 	table code_table1{
-        key = {meta.codeword1: ternary;}
+        key = {
+            meta.codeword1_0: ternary;
+            meta.codeword1_1: ternary;
+            meta.codeword1_2: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass1;}
 	    size = 41;
         const default_action = nop();
 	}
 	table code_table2{
-        key = {meta.codeword2: ternary;}
+        key = {
+            meta.codeword2_0: ternary;
+            meta.codeword2_1: ternary;
+            meta.codeword2_2: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass2;}
 	    size = 41;
         const default_action = nop();
 	}
     table code_table3{
-        key = {meta.codeword3: ternary;}
+        key = {
+            meta.codeword3_0: ternary;
+            meta.codeword3_1: ternary;
+            meta.codeword3_2: ternary;
+            meta.codeword3_3: ternary;
+            meta.codeword3_4: ternary;
+            meta.codeword3_5: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass3;}
 	    size = 481;
         const default_action = nop();
@@ -660,7 +676,7 @@ control MyIngress(
                     else{  // ONE OF THE CLASSES
                         meta.final_class =  meta.class_model1;
                     }
-                    // update_classified_flag_model1.execute(meta.register_index);  // Removed because of the stage issue
+                    update_classified_flag_model1(meta.register_index);
                     meta.is_refresh = 1; // Store the result and refresh the memory since it is a FL classification
                     meta.is_flow = 1;
                 }
@@ -672,9 +688,9 @@ control MyIngress(
                 digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
                 ipv4_forward(24);
             }
-            // else {  // Removed because of the stage issue
-            //     meta.f_action = read_classified_flag_model1.execute(meta.register_index);
-            // }
+            else {
+                read_classified_flag_model1(meta.register_index);
+            }
             // }
         }
         if (meta.f_action == 19) {  // If the flow is classified as OTHERS (obtained by the flow_action table)

@@ -136,13 +136,24 @@ struct my_ingress_metadata_t {
     bit<32> iat;
     bit<32> flow_duration;
 
-    bit<8> class0;
     bit<8> class1;
+    bit<8> class2;
     bit<8> class_model1;
     bit<8> final_class;
 
-    bit<216> codeword0;
-    bit<128> codeword1;
+    bit<26> codeword0_0;
+    bit<81> codeword0_1;
+    bit<23> codeword0_2;
+    bit<23> codeword0_3;
+    bit<14> codeword0_4;
+    bit<34> codeword0_5;
+    bit<15> codeword0_6;
+
+    bit<32> codeword1_0;
+    bit<12> codeword1_1;
+    bit<10> codeword1_2;
+    bit<32> codeword1_3;
+    bit<42> codeword1_4;
 
     bit<8> digest_info; // used for either class or collision info
 
@@ -341,8 +352,7 @@ control MyIngress(
         meta.class_model1 = classe;
     }
     action SetClass1(bit<8> classe) {
-        // TODO
-        // meta.class2 = classe;
+        meta.class2 = classe;
     }
     // action SetClass2(bit<8> classe) {
     //     meta.class2 = classe;
@@ -376,41 +386,41 @@ control MyIngress(
     // [[26, 81, 23, 23, 14, 34, 15]] - [[32, 12, 10, 32, 42]]
     /* Feature table actions */
     action SetCode0(bit<26> code0) {
-        meta.codeword0[215:190] = code0;
+        meta.codeword0_0 = code0;
     }
     action SetCode1(bit<81> code0) {
-        meta.codeword0[189:109] = code0;
+        meta.codeword0_1 = code0;
     }
     action SetCode2(bit<23> code0) {
-        meta.codeword0[108:86] = code0;
+        meta.codeword0_2 = code0;
     }
     action SetCode3(bit<23> code0) {
-        meta.codeword0[85:63] = code0;
+        meta.codeword0_3 = code0;
     }
     action SetCode4(bit<14> code0) {
-        meta.codeword0[62:49] = code0;
+        meta.codeword0_4 = code0;
     }
     action SetCode5(bit<34> code0) {
-        meta.codeword0[48:15] = code0;
+        meta.codeword0_5 = code0;
     }
     action SetCode6(bit<15> code0) {
-        meta.codeword0[14:0] = code0;
+        meta.codeword0_6 = code0;
     }
     //
     action SetCode7(bit<32> code0) {
-        meta.codeword1[127:96] = code0;
+        meta.codeword1_0 = code0;
     }
     action SetCode8(bit<12> code0) {
-        meta.codeword1[95:84] = code0;
+        meta.codeword1_1 = code0;
     }
     action SetCode9(bit<10> code0) {
-        meta.codeword1[83:74] = code0;
+        meta.codeword1_2 = code0;
     }
     action SetCode10(bit<32> code0) {
-        meta.codeword1[73:42] = code0;
+        meta.codeword1_3 = code0;
     }
     action SetCode11(bit<42> code0) {
-        meta.codeword1[41:0] = code0;
+        meta.codeword1_4 = code0;
     }
 
 
@@ -503,13 +513,27 @@ control MyIngress(
 
     /* Code tables */
 	table code_table0{
-	    key = {meta.codeword0: ternary;}
+	    key = {
+            meta.codeword0_0: ternary;
+            meta.codeword0_1: ternary;
+            meta.codeword0_2: ternary;
+            meta.codeword0_3: ternary;
+            meta.codeword0_4: ternary;
+            meta.codeword0_5: ternary;
+            meta.codeword0_6: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass0;}
 	    size = 217;
         const default_action = nop();
 	}
 	table code_table1{
-        key = {meta.codeword1: ternary;}
+        key = {
+            meta.codeword1_0: ternary;
+            meta.codeword1_1: ternary;
+            meta.codeword1_2: ternary;
+            meta.codeword1_3: ternary;
+            meta.codeword1_4: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass1;}
 	    size = 129;
         const default_action = nop();
@@ -608,13 +632,11 @@ control MyIngress(
                     table_feature11.apply();
 
                     code_table1.apply();
-                    // TODO
-                    // meta.class2 = meta.class2 + 23;
+                    meta.class2 = meta.class2 + 23;
 
                     meta.is_refresh = 0;
                     if (meta.class1 == 24){ // OTHERS: If the packet classified as Others in the first model
-                        // TODO
-                        // set_final_class(meta.class2);
+                        set_final_class(meta.class2);
                     }
                     else{  // ONE OF THE CLASSES
                         set_final_class(meta.class1);

@@ -134,13 +134,23 @@ struct my_ingress_metadata_t {
     bit<16> total_len;
     // bit<32> flow_duration;
 
-    bit<8> class0;
     bit<8> class1;
+    bit<8> class2;
     bit<8> class_model1;
     bit<8> final_class;
 
-    bit<436> codeword0;
-    bit<84> codeword1;
+    bit<38> codeword0_0;
+    bit<120> codeword0_1;
+    bit<103> codeword0_2;
+    bit<73> codeword0_3;
+    bit<102> codeword0_4;
+
+    bit<7> codeword1_0;
+    bit<13> codeword1_1;
+    bit<9> codeword1_2;
+    bit<18> codeword1_3;
+    bit<18> codeword1_4;
+    bit<19> codeword1_5;
 
     bit<8> digest_info; // used for either class or collision info
 
@@ -323,8 +333,7 @@ control MyIngress(
         meta.class_model1 = classe;
     }
     action SetClass1(bit<8> classe) {
-        // TODO
-        // meta.class2 = classe;
+        meta.class2 = classe;
     }
 
     /* Forward to a specific port upon classification */
@@ -346,43 +355,38 @@ control MyIngress(
     // [[38, 120, 103, 73, 102]] - [[7, 13, 9, 18, 18, 19]]
     /* Feature table actions */
     action SetCode0(bit<38> code0) {
-        // TODO : Use david fix
-        // meta.codeword0[435:398] = code0;
+        meta.codeword0_0 = code0;
     }
     action SetCode1(bit<120> code0) {
-        // TODO : Use david fix
-        // meta.codeword0[397:278] = code0;
+        meta.codeword0_1 = code0;
     }
     action SetCode2(bit<103> code0) {
-        // TODO : Use david fix
-        // meta.codeword0[277:175] = code0;
+        meta.codeword0_2 = code0;
     }
     action SetCode3(bit<73> code0) {
-        // TODO : Use david fix
-        // meta.codeword0[174:102] = code0;
+        meta.codeword0_3 = code0;
     }
     action SetCode4(bit<102> code0) {
-        // TODO : Use david fix
-        // meta.codeword0[101:0] = code0;
+        meta.codeword0_4 = code0;
     }
     //
     action SetCode5(bit<7> code0) {
-        meta.codeword1[83:77] = code0;
+        meta.codeword1_0 = code0;
     }
     action SetCode6(bit<13> code0) {
-        meta.codeword1[76:64] = code0;
+        meta.codeword1_1 = code0;
     }
     action SetCode7(bit<9> code0) {
-        meta.codeword1[63:55] = code0;
+        meta.codeword1_2 = code0;
     }
     action SetCode8(bit<18> code0) {
-        meta.codeword1[54:37] = code0;
+        meta.codeword1_3 = code0;
     }
     action SetCode9(bit<18> code0) {
-        meta.codeword1[36:19] = code0;
+        meta.codeword1_4 = code0;
     }
     action SetCode10(bit<19> code0) {
-        meta.codeword1[18:0] = code0;
+        meta.codeword1_5 = code0;
     }
 
 
@@ -467,13 +471,26 @@ control MyIngress(
 
     /* Code tables */
 	table code_table0{
-	    key = {meta.codeword0: ternary;}
+	    key = {
+            meta.codeword0_0: ternary;
+            meta.codeword0_1: ternary;
+            meta.codeword0_2: ternary;
+            meta.codeword0_3: ternary;
+            meta.codeword0_4: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass0;}
 	    size = 437;
         const default_action = nop();
 	}
 	table code_table1{
-        key = {meta.codeword1: ternary;}
+        key = {
+            meta.codeword1_0: ternary;
+            meta.codeword1_1: ternary;
+            meta.codeword1_2: ternary;
+            meta.codeword1_3: ternary;
+            meta.codeword1_4: ternary;
+            meta.codeword1_5: ternary;
+        }
 	    actions = {@defaultonly nop; SetClass1;}
 	    size = 85;
         const default_action = nop();
@@ -565,16 +582,14 @@ control MyIngress(
                     table_feature10.apply();
 
                     code_table1.apply();
-                    // TODO
-                    // meta.class2 = meta.class2 + 19;
+                    meta.class2 = meta.class2 + 19;
 
                     meta.is_refresh = 0;
 
                     if (meta.pkt_count < 4){
                         update_classified_flag_model1(meta.register_index); // Store the results of the first inference model
                         if (meta.class1 == 20){ // OTHERS: If the packet classified as Others in the first model, set the final class with the result obtained from the second model
-                            // TODO
-                            // set_final_class(meta.class2);
+                            set_final_class(meta.class2);
                         }
                         else{  // ONE OF THE CLASSES: If the packet classified as one of the classes in the first model, set the final class with the result obtained from the first model
                             set_final_class(meta.class1);
@@ -592,8 +607,7 @@ control MyIngress(
                         read_classified_flag_model1(meta.register_index);
 
                         if (meta.class_model1 == 20){ // OTHERS: If the packet classified as Others in the first model
-                            // TODO
-                            // set_final_class(meta.class2);
+                            set_final_class(meta.class2);
                         }
                         else{  // ONE OF THE CLASSES
                             set_final_class(meta.class_model1);
