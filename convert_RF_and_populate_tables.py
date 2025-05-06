@@ -267,20 +267,16 @@ def upload_model(model, feature_offset, code_table_offset, index):
     feature_names = clf.feature_names_in_
     print(feature_names)
 
-    tree_code0 = []
-    tree_code1 = []
-    tree_code2 = []
+    tree_code_sizes = [[] for _ in range(len(clf.estimators_))]
 
     for fea in range(0, len(feature_names)):
         Ranges, Codes = get_feature_codes_with_ranges(
             get_feature_table(get_splits(clf, feature_names), feature_names[fea]),
             len(clf.estimators_),
         )
-        for ran, cods0, cods1, cods2 in zip(
-            Ranges, Codes.iloc[:, 0], Codes.iloc[:, 1], Codes.iloc[:, 2]
-        ):
-            entry = p4.TableEntry(f"MyIngress.table_feature{fea}")(
-                action=f"MyIngress.SetCode{fea}"
+        for i, ran in enumerate(Ranges):
+            entry = p4.TableEntry(f"MyIngress.table_feature{fea + feature_offset}")(
+                action=f"MyIngress.SetCode{fea + feature_offset}"
             )
             start = ran.split(",")[0]
             end = (
@@ -290,21 +286,14 @@ def upload_model(model, feature_offset, code_table_offset, index):
                 if ran == Ranges[len(Ranges) - 1]
                 else ran.split(",")[1]
             )
-            entry.match[f"feature{fea}"] = f"{start}..{end}"
-            entry.action["code0"] = str(cods0)
-            entry.action["code1"] = str(cods1)
-            entry.action["code2"] = str(cods2)
+            entry.match[f"feature{fea + feature_offset}"] = f"{start}..{end}"
+            for j in range(0, len(clf.estimators_)):
+                entry.action[f"code{j}"] = str(Codes.iloc[i, j])
             entry.priority = 1
             entry.insert()
-        tree_code0.append(len(cods0) - 2)
-        tree_code1.append(len(cods1) - 2)
-        tree_code2.append(len(cods2) - 2)
+        for j in range(0, len(clf.estimators_)):
+            tree_code_sizes[j].append(len(Codes.iloc[0, j]) - 2)
 
-    tree_code_sizes = [
-        tree_code0,  # meta.codeword0_*
-        tree_code1,  # meta.codeword1_*
-        tree_code2,  # meta.codeword2_*
-    ]
     print(tree_code_sizes)
 
     for tree_id in range(0, len(clf.estimators_)):
@@ -350,7 +339,6 @@ def upload_model(model, feature_offset, code_table_offset, index):
                         entry.match["meta.class3"] = str(k)
                         entry.action["class_result"] = str(mode([i, j, k]))
                         entry.insert()
-
 
     # TODO
     # # Get 'INFERENCE FORWARDING BLOCK' table entries
@@ -410,8 +398,8 @@ def main():
         len_features, len_code_tables = upload_model(
             model, feature_offset, code_table_offset, index
         )
-        feature_offset+=len_features
-        code_table_offset+=len_code_tables
+        feature_offset += len_features
+        code_table_offset += len_code_tables
 
     # Configure digest
     d = p4.DigestEntry("flow_class_digest")
