@@ -343,30 +343,29 @@ def upload_model(model, feature_offset, code_table_offset, index):
     except p4.UserError:
         print("This table does not seem to have a voting table")
 
-    # TODO
-    # # Get 'INFERENCE FORWARDING BLOCK' table entries
-    # # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
-    # # ACTION: Forwarding: 0 Inference: 1
-    # flow_id_info = pd.read_csv("model/test_data_flow_packet_counts.csv")
-    # flow_id_info = flow_id_info.dropna()
-    # flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
-    # for index, flow in flow_id_info.iterrows():
-    #     flow_id = flow["flow.id"]
-    #     id_values = flow_id.split(" ")
-    #     # With all tuple elements
-    #     try:
-    #         entry = p4.TableEntry("MyIngress.flow_action_table")(
-    #             action="MyIngress.set_flow_action"
-    #         )
-    #         entry.match["hdr.ipv4.src_addr"] = str(int(ip_address(id_values[0])))
-    #         entry.match["hdr.ipv4.dst_addr"] = str(int(ip_address(id_values[1])))
-    #         entry.match["meta.hdr_srcport"] = str(id_values[2])
-    #         entry.match["meta.hdr_dstport"] = str(id_values[3])
-    #         entry.match["hdr.ipv4.protocol"] = str(id_values[4])
-    #         entry.action["f_action"] = "1"
-    #         entry.insert()
-    #     except:
-    #         continue
+    # Get 'INFERENCE FORWARDING BLOCK' table entries
+    # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
+    # ACTION: Forwarding: 0 Inference: 1
+    flow_id_info = pd.read_csv("models/test_data_flow_packet_counts.csv")
+    flow_id_info = flow_id_info.dropna()
+    flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
+    for index, flow in flow_id_info.iterrows():
+        flow_id = flow["flow.id"]
+        id_values = flow_id.split(" ")
+        # With all tuple elements
+        try:
+            entry = p4.TableEntry("MyIngress.flow_action_table")(
+                action="MyIngress.set_flow_action"
+            )
+            entry.match["hdr.ipv4.src_addr"] = str(int(ip_address(id_values[0])))
+            entry.match["hdr.ipv4.dst_addr"] = str(int(ip_address(id_values[1])))
+            entry.match["meta.hdr_srcport"] = str(id_values[2])
+            entry.match["meta.hdr_dstport"] = str(id_values[3])
+            entry.match["hdr.ipv4.protocol"] = str(id_values[4])
+            entry.action["f_action"] = "1"
+            entry.insert()
+        except:
+            continue
     return len(feature_names), len(clf.estimators_)
 
 

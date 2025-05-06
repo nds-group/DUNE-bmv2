@@ -105,7 +105,7 @@ def main():
     print("*** Switches programmed")
 
 
-    # sleep(1)
+    sleep(1)
 
     CLI(net)
     print("*** Stoping the network")
