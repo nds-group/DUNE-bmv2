@@ -1,0 +1,3 @@
+Right now we assume the adress of the switches are at 0.0.0.0
+
+The thirft and grpc port passed to the simple_switch_grpc are for the host

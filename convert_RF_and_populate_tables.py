@@ -6,6 +6,7 @@ import pandas as pd
 import warnings
 from statistics import mode
 from ipaddress import ip_address
+import argparse
 
 pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
@@ -258,23 +259,9 @@ def extractKBits(num):
     return num_dec
 
 
-def main():
-    # Connecting to the switch
-    p4.setup(
-        device_id=0,
-        grpc_addr="0.0.0.0:50051",
-        election_id=(0, 1),  # (high, low)
-        config=p4.FwdPipeConfig(
-            "build/unsw_jewel_14_3_6_N3.p4.p4info.txtpb",
-            "build/unsw_jewel_14_3_6_N3.json",
-        ),
-        verbose=False,
-    )
-
-    np.random.seed(42)
-
+def upload_model(model, feature_offset, code_table_offset, index):
     # import and get entries from trained models ##
-    clf = pd.read_pickle("model/model_unsw_jewel_14_3_6_n3.sav")
+    clf = pd.read_pickle(model)
 
     # list the feature names
     feature_names = clf.feature_names_in_
@@ -348,44 +335,83 @@ def main():
             entry.priority = 1
             entry.insert()
 
-    for i in range(1, 27):
-        for j in range(1, 27):
-            for k in range(1, 27):
-                if (i != j) & (j != k) & (i != k):
-                    pass
-                else:
-                    entry = p4.TableEntry("MyIngress.voting_table")(
-                        action="MyIngress.set_final_class"
-                    )
-                    entry.match["meta.class0"] = str(i)
-                    entry.match["meta.class1"] = str(j)
-                    entry.match["meta.class2"] = str(k)
-                    entry.action["class_result"] = str(mode([i, j, k]))
-                    entry.insert()
+    if index == 0:
+        for i in range(1, 3):
+            for j in range(1, 3):
+                for k in range(1, 3):
+                    if (i != j) & (j != k) & (i != k):
+                        pass
+                    else:
+                        entry = p4.TableEntry("MyIngress.voting_table")(
+                            action="MyIngress.set_final_class"
+                        )
+                        entry.match["meta.class1"] = str(i)
+                        entry.match["meta.class2"] = str(j)
+                        entry.match["meta.class3"] = str(k)
+                        entry.action["class_result"] = str(mode([i, j, k]))
+                        entry.insert()
 
-    # Get 'INFERENCE FORWARDING BLOCK' table entries
-    # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
-    # ACTION: Forwarding: 0 Inference: 1
-    flow_id_info = pd.read_csv("model/test_data_flow_packet_counts.csv")
-    flow_id_info = flow_id_info.dropna()
-    flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
-    for index, flow in flow_id_info.iterrows():
-        flow_id = flow["flow.id"]
-        id_values = flow_id.split(" ")
-        # With all tuple elements
-        try:
-            entry = p4.TableEntry("MyIngress.flow_action_table")(
-                action="MyIngress.set_flow_action"
-            )
-            entry.match["hdr.ipv4.src_addr"] = str(int(ip_address(id_values[0])))
-            entry.match["hdr.ipv4.dst_addr"] = str(int(ip_address(id_values[1])))
-            entry.match["meta.hdr_srcport"] = str(id_values[2])
-            entry.match["meta.hdr_dstport"] = str(id_values[3])
-            entry.match["hdr.ipv4.protocol"] = str(id_values[4])
-            entry.action["f_action"] = "1"
-            entry.insert()
-        except:
-            continue
+
+    # TODO
+    # # Get 'INFERENCE FORWARDING BLOCK' table entries
+    # # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
+    # # ACTION: Forwarding: 0 Inference: 1
+    # flow_id_info = pd.read_csv("model/test_data_flow_packet_counts.csv")
+    # flow_id_info = flow_id_info.dropna()
+    # flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
+    # for index, flow in flow_id_info.iterrows():
+    #     flow_id = flow["flow.id"]
+    #     id_values = flow_id.split(" ")
+    #     # With all tuple elements
+    #     try:
+    #         entry = p4.TableEntry("MyIngress.flow_action_table")(
+    #             action="MyIngress.set_flow_action"
+    #         )
+    #         entry.match["hdr.ipv4.src_addr"] = str(int(ip_address(id_values[0])))
+    #         entry.match["hdr.ipv4.dst_addr"] = str(int(ip_address(id_values[1])))
+    #         entry.match["meta.hdr_srcport"] = str(id_values[2])
+    #         entry.match["meta.hdr_dstport"] = str(id_values[3])
+    #         entry.match["hdr.ipv4.protocol"] = str(id_values[4])
+    #         entry.action["f_action"] = "1"
+    #         entry.insert()
+    #     except:
+    #         continue
+    return len(feature_names), len(clf.estimators_)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--p4info", required=True)
+    parser.add_argument("--json", required=True)
+
+    parser.add_argument("--models", nargs="+", required=True)
+    args = parser.parse_args()
+    return args
+
+
+def main():
+    args = parse_args()
+
+    # Connecting to the switch
+    p4.setup(
+        device_id=0,
+        grpc_addr="0.0.0.0:50051",
+        election_id=(0, 1),  # (high, low)
+        config=p4.FwdPipeConfig(args.p4info, args.json),
+        verbose=False,
+    )
+
+    np.random.seed(42)
+
+    feature_offset = 0
+    code_table_offset = 0
+    for index, model in enumerate(args.models):
+        len_features, len_code_tables = upload_model(
+            model, feature_offset, code_table_offset, index
+        )
+        feature_offset+=len_features
+        code_table_offset+=len_code_tables
 
     # Configure digest
     d = p4.DigestEntry("flow_class_digest")

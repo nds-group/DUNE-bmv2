@@ -12,9 +12,27 @@ from p4_mininet.switch import P4RuntimeSwitch
 from time import sleep
 
 switches = {
-    "s1": "unsw_jewel_3_3_41_N3_1_6_481_N2",
-    "s2": "ton_jewel_1_5_437_N3_1_6_85_N4",
-    "s3": "unsw_jewel_1_7_217_N3_1_5_129_N3",
+    "s1": {  # CL2-0
+        "prog": "unsw_jewel_3_3_41_N3_1_6_481_N2",
+        "models": [
+            "FINAL_unsw_ClID2_N3_T3_F3_L41_With_Others.sav",
+            "unsw_ClID0_N2_T1_F6_L481_With_Others.sav",
+        ],
+    },
+    "s2": {  # CL1-3
+        "prog": "ton_jewel_1_5_437_N3_1_6_85_N4",
+        "models": [
+            "unsw_ClID1_N3_T1_F5_L437_With_Others.sav",
+            "unsw_ClID3_N4_T1_F6_L85_With_Others.sav",
+        ],
+    },
+    "s3": {  # CL4-5
+        "prog": "unsw_jewel_1_7_217_N3_1_5_129_N3",
+        "models": [
+            "N_unsw_ClID4_N3_T1_F7_L217_With_Others.sav",
+            "unsw_ClID5_N3_T1_F5_L129_With_Others.sav",
+        ],
+    },
 }
 
 
@@ -23,31 +41,57 @@ class Topology(Topo):
         # Initialize topology and default options
         Topo.__init__(self, **opts)
 
-        h1 = self.addNode("h1")
+        # h1 = self.addNode("h1")
         s1 = self.addSwitch(
             "s1",
             sw_path="simple_switch_grpc",
-            json_path=f"build/{switches['s1']}.json",
+            json_path=f"build/{switches['s1']['prog']}.json",
             pcap_dump="pcaps/",
             log_console=True,
+            log_file="logs/s1.log",
+            verbose=True,
         )
-        s2 = self.addSwitch(
-            "s2",
-            sw_path="simple_switch_grpc",
-            json_path=f"build/{switches['s2']}.json",
-            pcap_dump="pcaps/",
-            log_console=True,
-        )
-        s3 = self.addSwitch(
-            "s3",
-            sw_path="simple_switch_grpc",
-            json_path=f"build/{switches['s3']}.json",
-            pcap_dump="pcaps/",
-            log_console=True,
-        )
-        self.addLink(h1, s1)
-        self.addLink(s1, s2)
-        self.addLink(s2, s3)
+        # s2 = self.addSwitch(
+        #     "s2",
+        #     sw_path="simple_switch_grpc",
+        #     json_path=f"build/{switches['s2']['prog']}.json",
+        #     pcap_dump="pcaps/",
+        #     log_console=True,
+        # )
+        # s3 = self.addSwitch(
+        #     "s3",
+        #     sw_path="simple_switch_grpc",
+        #     json_path=f"build/{switches['s3']['prog']}.json",
+        #     pcap_dump="pcaps/",
+        #     log_console=True,
+        # )
+        # self.addLink(h1, s1)
+        # self.addLink(s1, s2)
+        # self.addLink(s2, s3)
+
+
+def program_switch(net, sw_name, models):
+    # args = ["python", "convert_RF_and_populate_tables.py"]
+    args = ["./convert_RF_and_populate_tables.py"]
+
+    args += ["--p4info", f"build/{switches[sw_name]['prog']}.p4.p4info.txtpb"]
+    args += ["--json", f"build/{switches[sw_name]['prog']}.json"]
+
+    args += ["--models"] + [*map(lambda m: f"models/{m}", models)]
+
+    sw = net.get(sw_name)
+    # grpc_port = sw.grpc_port
+
+    command = " ".join(args)
+    # print("-------------------------------------------")
+    print(command)
+    # print("-------------------------------------------")
+
+    # out = sw.cmd(command)
+    # print(out)
+    # print("-------------------------------------------")
+
+    pass
 
 
 def main():
@@ -57,14 +101,11 @@ def main():
     )
     net.start()
 
-    sleep(1)
-    # print("Configuring the switch")
-    # out = net.get("s1").cmd("python convert_RF_and_populate_tables.py")
-    # print(out)
-    # ! The next commands never finishes
-    # out = net.get("s1").cmd("python controller.py")
-    # print(out)
-    # print("Switch configured")
+    program_switch(net, "s1", switches["s1"]["models"])
+    # program_switch(net, "s2", switches["s2"]["models"])
+    # program_switch(net, "s3", switches["s3"]["models"])
+
+    # sleep(1)
 
     CLI(net)
     net.stop()

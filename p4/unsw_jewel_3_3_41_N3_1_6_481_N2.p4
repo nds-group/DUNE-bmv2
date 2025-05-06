@@ -473,7 +473,7 @@ control MyIngress(
         // [4,0]
 	    key = {meta.flow_iat_min[31:21]: range @name("feature2");}
 	    actions = {@defaultonly nop; SetCode2;}
-	    size = 35;
+	    size = 50;
         const default_action = nop();
 	}
     //
