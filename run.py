@@ -11,6 +11,13 @@ from p4_mininet.switch import P4RuntimeSwitch
 
 from time import sleep
 
+switches = {
+    "s1": "unsw_jewel_3_3_41_N3_1_6_481_N2",
+    "s2": "ton_jewel_1_5_437_N3_1_6_85_N4",
+    "s3": "unsw_jewel_1_7_217_N3_1_5_129_N3",
+}
+
+
 class Topology(Topo):
     def __init__(self, conf=None, **opts):
         # Initialize topology and default options
@@ -20,19 +27,28 @@ class Topology(Topo):
         s1 = self.addSwitch(
             "s1",
             sw_path="simple_switch_grpc",
-            json_path="build/unsw_jewel_14_3_6_N3.json",
+            json_path=f"build/{switches['s1']}.json",
             pcap_dump="pcaps/",
             log_console=True,
         )
-        # s2 = self.addSwitch(
-        #     "s2",
-        #     sw_path="simple_switch_grpc",
-        #     json_path="build/unsw_jewel_14_3_6_N3.json",
-        #     pcap_dump="pcaps/",
-        #     log_console=True,
-        # )
+        s2 = self.addSwitch(
+            "s2",
+            sw_path="simple_switch_grpc",
+            json_path=f"build/{switches['s2']}.json",
+            pcap_dump="pcaps/",
+            log_console=True,
+        )
+        s3 = self.addSwitch(
+            "s3",
+            sw_path="simple_switch_grpc",
+            json_path=f"build/{switches['s3']}.json",
+            pcap_dump="pcaps/",
+            log_console=True,
+        )
         self.addLink(h1, s1)
-        # self.addLink(s1, s2)
+        self.addLink(s1, s2)
+        self.addLink(s2, s3)
+
 
 def main():
     topo = Topology()
