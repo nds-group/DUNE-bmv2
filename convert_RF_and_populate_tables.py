@@ -308,8 +308,8 @@ def upload_model(model, feature_offset, code_table_offset, index):
         print("Final_Codes Length: ", len(Final_Masks))
         # print('Classe Length: ', len(Classe.unique()))
         for cod, mas, cla, cer in zip(Final_Codes, Final_Masks, Classe, Certain):
-            entry = p4.TableEntry(f"MyIngress.code_table{tree_id}")(
-                action=f"MyIngress.SetClass{tree_id}"
+            entry = p4.TableEntry(f"MyIngress.code_table{tree_id+code_table_offset}")(
+                action=f"MyIngress.SetClass{tree_id+code_table_offset}"
             )
             start = 0
             cod = str(cod).removeprefix("0b")
@@ -319,7 +319,7 @@ def upload_model(model, feature_offset, code_table_offset, index):
                 mask = f"0b{mas[start : start + size]}"
                 start += size
                 if int(mask, base=0):  # Ignore the "Don't care" mask
-                    entry.match[f"meta.codeword{tree_id}_{i}"] = f"{code}&&&{mask}"
+                    entry.match[f"meta.codeword{tree_id+code_table_offset}_{i}"] = f"{code}&&&{mask}"
             entry.action["classe"] = str(cla + 1)
             entry.priority = 1
             entry.insert()
