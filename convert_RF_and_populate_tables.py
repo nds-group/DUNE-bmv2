@@ -324,21 +324,24 @@ def upload_model(model, feature_offset, code_table_offset, index):
             entry.priority = 1
             entry.insert()
 
-    if index == 0:
-        for i in range(1, 3):
-            for j in range(1, 3):
-                for k in range(1, 3):
-                    if (i != j) & (j != k) & (i != k):
-                        pass
-                    else:
-                        entry = p4.TableEntry("MyIngress.voting_table")(
-                            action="MyIngress.set_final_class"
-                        )
-                        entry.match["meta.class1"] = str(i)
-                        entry.match["meta.class2"] = str(j)
-                        entry.match["meta.class3"] = str(k)
-                        entry.action["class_result"] = str(mode([i, j, k]))
-                        entry.insert()
+    try:
+        if index == 0:
+            for i in range(1, 3):
+                for j in range(1, 3):
+                    for k in range(1, 3):
+                        if (i != j) & (j != k) & (i != k):
+                            pass
+                        else:
+                            entry = p4.TableEntry("MyIngress.voting_table")(
+                                action="MyIngress.set_final_class"
+                            )
+                            entry.match["meta.class1"] = str(i)
+                            entry.match["meta.class2"] = str(j)
+                            entry.match["meta.class3"] = str(k)
+                            entry.action["class_result"] = str(mode([i, j, k]))
+                            entry.insert()
+    except p4.UserError:
+        print("This table does not seem to have a voting table")
 
     # TODO
     # # Get 'INFERENCE FORWARDING BLOCK' table entries

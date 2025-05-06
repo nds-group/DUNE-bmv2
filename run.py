@@ -41,7 +41,7 @@ class Topology(Topo):
         # Initialize topology and default options
         Topo.__init__(self, **opts)
 
-        # h1 = self.addNode("h1")
+        h1 = self.addNode("h1")
         s1 = self.addSwitch(
             "s1",
             sw_path="simple_switch_grpc",
@@ -51,47 +51,40 @@ class Topology(Topo):
             log_file="logs/s1.log",
             verbose=True,
         )
-        # s2 = self.addSwitch(
-        #     "s2",
-        #     sw_path="simple_switch_grpc",
-        #     json_path=f"build/{switches['s2']['prog']}.json",
-        #     pcap_dump="pcaps/",
-        #     log_console=True,
-        # )
-        # s3 = self.addSwitch(
-        #     "s3",
-        #     sw_path="simple_switch_grpc",
-        #     json_path=f"build/{switches['s3']['prog']}.json",
-        #     pcap_dump="pcaps/",
-        #     log_console=True,
-        # )
-        # self.addLink(h1, s1)
-        # self.addLink(s1, s2)
-        # self.addLink(s2, s3)
+        s2 = self.addSwitch(
+            "s2",
+            sw_path="simple_switch_grpc",
+            json_path=f"build/{switches['s2']['prog']}.json",
+            pcap_dump="pcaps/",
+            log_file="logs/s2.log",
+            log_console=True,
+        )
+        s3 = self.addSwitch(
+            "s3",
+            sw_path="simple_switch_grpc",
+            json_path=f"build/{switches['s3']['prog']}.json",
+            pcap_dump="pcaps/",
+            log_file="logs/s3.log",
+            log_console=True,
+        )
+        self.addLink(h1, s1)
+        self.addLink(s1, s2)
+        self.addLink(s2, s3)
 
 
 def program_switch(net, sw_name, models):
-    # args = ["python", "convert_RF_and_populate_tables.py"]
-    args = ["./convert_RF_and_populate_tables.py"]
-
+    print(f"*** Programming switch {sw_name}")
+    args = ["python", "convert_RF_and_populate_tables.py"]
     args += ["--p4info", f"build/{switches[sw_name]['prog']}.p4.p4info.txtpb"]
     args += ["--json", f"build/{switches[sw_name]['prog']}.json"]
-
     args += ["--models"] + [*map(lambda m: f"models/{m}", models)]
 
     sw = net.get(sw_name)
-    # grpc_port = sw.grpc_port
-
+    args += [">" , f"logs/{sw_name}.p4runtime-requests.log" , "2>&1"]
     command = " ".join(args)
-    # print("-------------------------------------------")
     print(command)
-    # print("-------------------------------------------")
-
-    # out = sw.cmd(command)
-    # print(out)
-    # print("-------------------------------------------")
-
-    pass
+    sw.cmd(command)
+    print(f"*** Switch {sw_name} programmed")
 
 
 def main():
@@ -99,16 +92,25 @@ def main():
     net = Mininet(
         topo=topo, host=P4Host, switch=P4RuntimeSwitch, controller=None, link=TCLink
     )
+    print("*** Starting the network")
     net.start()
+    print("*** Network started")
 
+
+    print("*** Programming switches")
+    sleep(1)
     program_switch(net, "s1", switches["s1"]["models"])
-    # program_switch(net, "s2", switches["s2"]["models"])
-    # program_switch(net, "s3", switches["s3"]["models"])
+    program_switch(net, "s2", switches["s2"]["models"])
+    program_switch(net, "s3", switches["s3"]["models"])
+    print("*** Switches programmed")
+
 
     # sleep(1)
 
     CLI(net)
+    print("*** Stoping the network")
     net.stop()
+    print("*** Network stoped")
 
 
 if __name__ == "__main__":
