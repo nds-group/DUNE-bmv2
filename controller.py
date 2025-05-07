@@ -5,43 +5,10 @@ import time
 import ipaddress
 import bmpy_utils as bm
 from bm_runtime.standard.Standard import Client
-
-# GRPC connecting to the switch
-p4.setup(
-    device_id=0,
-    grpc_addr="0.0.0.0:50051",
-    election_id=(0, 1),  # (high, low)
-    verbose=False,
-)
-# Thrift connection to the switch
-# (because registers not implemented in GRPC)
-thrift_client: Client = bm.thrift_connect_standard(
-    thrift_ip="0.0.0.0",
-    thrift_port="9090",
-)
+import argparse
 
 
-digest_list = p4.DigestList()
-
-# file_out = sys.argv[1]
-file_out = "output"
-output = open(file_out, "w", 1)
-
-header = "source_addr,destin_addr,source_port,destin_port,protocol,pkt_count,flow_packet_class"
-registers = [
-    "MyIngress.reg_classified_flag",
-    "MyIngress.reg_flow_ID",
-    "MyIngress.reg_pkt_count",
-    "MyIngress.reg_time_last_pkt",
-]
-print(header, file=output)
-
-npkts = 3
-
-while True:
-    print("sniffing")
-    dl = digest_list.sniff(timeout=1)
-
+def handle_digest(thrift_client, registers, npkts, dl ,output):
     for response in dl:
         for data in response.digest.data:
             source_addr = int.from_bytes(data.struct.members[0].bitstring)
@@ -71,16 +38,70 @@ while True:
                 entry.modify()
 
                 for register in registers:
-                    a = thrift_client.bm_register_write(0, register, register_index, 0)
+                    thrift_client.bm_register_write(0, register, register_index, 0)
 
-    # Necessaray to stop the loop because digest_list.sniff()
-    # already catch KeyboardInterrupt
-    try:
-        print("sleeping")
-        time.sleep(1)
-    except KeyboardInterrupt:
-        print("exiting")
-        break
 
-p4.teardown()
-output.close()
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output",required=True)
+    parser.add_argument("--grpc-port",required=True)
+    parser.add_argument("--thrift-port",required=True)
+    parser.add_argument("--device-id",required=True,type=int)
+    parser.add_argument("--npkts",required=True,type=int)
+    args = parser.parse_args()
+    return args
+
+def main():
+    args = parse_args()
+
+    output = open(args.output, "w", 1)
+    header = "source_addr,destin_addr,source_port,destin_port,protocol,pkt_count,flow_packet_class"
+    print(header, file=output)
+
+    # GRPC connecting to the switch
+    p4.setup(
+        device_id=args.device_id,
+        grpc_addr=f"0.0.0.0:{args.grpc_port}",
+        election_id=(0, 1),  # (high, low)
+        verbose=False,
+    )
+    # Thrift connection to the switch
+    # (because registers not implemented in GRPC)
+    thrift_client: Client = bm.thrift_connect_standard(
+        thrift_ip="0.0.0.0",
+        thrift_port=args.thrift_port,
+    )
+
+    digest_list = p4.DigestList()
+
+    registers = [
+        "MyIngress.reg_classified_flag",
+        "MyIngress.reg_flow_ID",
+        "MyIngress.reg_pkt_count",
+        "MyIngress.reg_time_last_pkt",
+    ]
+
+    npkts = args.npkts
+
+    while True:
+        print("sniffing")
+        dl = digest_list.sniff(timeout=1)
+
+        handle_digest(thrift_client,registers,npkts,dl,output)
+        # Necessaray to stop the loop because digest_list.sniff()
+        # already catch KeyboardInterrupt
+        try:
+            print("sleeping")
+            time.sleep(1)
+        except KeyboardInterrupt:
+            print("exiting")
+            break
+
+    p4.teardown()
+    output.close()
+
+
+
+if __name__=="__main__":
+    main()
