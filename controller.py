@@ -6,9 +6,18 @@ import ipaddress
 import bmpy_utils as bm
 from bm_runtime.standard.Standard import Client
 import argparse
+import json
+
+def get_registers_from_switch(thrift_client):
+    config = json.loads(thrift_client.bm_get_config())
+
+    registers = []
+    for register_array in config["register_arrays"]:
+        registers.append(register_array["name"])
+    return registers
 
 
-def handle_digest(thrift_client, registers, npkts, dl ,output):
+def handle_digest(thrift_client, registers, npkts, dl, output):
     for response in dl:
         for data in response.digest.data:
             source_addr = int.from_bytes(data.struct.members[0].bitstring)
@@ -41,16 +50,16 @@ def handle_digest(thrift_client, registers, npkts, dl ,output):
                     thrift_client.bm_register_write(0, register, register_index, 0)
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output",required=True)
-    parser.add_argument("--grpc-port",required=True)
-    parser.add_argument("--thrift-port",required=True)
-    parser.add_argument("--device-id",required=True,type=int)
-    parser.add_argument("--npkts",required=True,type=int)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--grpc-port", required=True)
+    parser.add_argument("--thrift-port", required=True)
+    parser.add_argument("--device-id", required=True, type=int)
+    parser.add_argument("--npkts", required=True, type=int)
     args = parser.parse_args()
     return args
+
 
 def main():
     args = parse_args()
@@ -75,12 +84,7 @@ def main():
 
     digest_list = p4.DigestList()
 
-    registers = [
-        "MyIngress.reg_classified_flag",
-        "MyIngress.reg_flow_ID",
-        "MyIngress.reg_pkt_count",
-        "MyIngress.reg_time_last_pkt",
-    ]
+    registers = get_registers_from_switch(thrift_client)
 
     npkts = args.npkts
 
@@ -88,7 +92,7 @@ def main():
         print("sniffing")
         dl = digest_list.sniff(timeout=1)
 
-        handle_digest(thrift_client,registers,npkts,dl,output)
+        handle_digest(thrift_client, registers, npkts, dl, output)
         # Necessaray to stop the loop because digest_list.sniff()
         # already catch KeyboardInterrupt
         try:
@@ -102,6 +106,5 @@ def main():
     output.close()
 
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
