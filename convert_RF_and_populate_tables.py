@@ -308,8 +308,8 @@ def upload_model(model, feature_offset, code_table_offset, index):
         print("Final_Codes Length: ", len(Final_Masks))
         # print('Classe Length: ', len(Classe.unique()))
         for cod, mas, cla, cer in zip(Final_Codes, Final_Masks, Classe, Certain):
-            entry = p4.TableEntry(f"MyIngress.code_table{tree_id+code_table_offset}")(
-                action=f"MyIngress.SetClass{tree_id+code_table_offset}"
+            entry = p4.TableEntry(f"MyIngress.code_table{tree_id + code_table_offset}")(
+                action=f"MyIngress.SetClass{tree_id + code_table_offset}"
             )
             start = 0
             cod = str(cod).removeprefix("0b")
@@ -319,7 +319,9 @@ def upload_model(model, feature_offset, code_table_offset, index):
                 mask = f"0b{mas[start : start + size]}"
                 start += size
                 if int(mask, base=0):  # Ignore the "Don't care" mask
-                    entry.match[f"meta.codeword{tree_id+code_table_offset}_{i}"] = f"{code}&&&{mask}"
+                    entry.match[f"meta.codeword{tree_id + code_table_offset}_{i}"] = (
+                        f"{code}&&&{mask}"
+                    )
             entry.action["classe"] = str(cla + 1)
             entry.priority = 1
             entry.insert()
@@ -341,19 +343,26 @@ def upload_model(model, feature_offset, code_table_offset, index):
                             entry.action["class_result"] = str(mode([i, j, k]))
                             entry.insert()
     except p4.UserError:
-        print("This table does not seem to have a voting table")
+        print("!!! This table does not seem to have a voting table")
 
     # Get 'INFERENCE FORWARDING BLOCK' table entries
     # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
     # ACTION: Forwarding: 0 Inference: 1
-    flow_id_info = pd.read_csv("models/test_data_flow_packet_counts.csv")
-    flow_id_info = flow_id_info.dropna()
-    flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
-    for index, flow in flow_id_info.iterrows():
-        flow_id = flow["flow.id"]
-        id_values = flow_id.split(" ")
-        # With all tuple elements
-        try:
+    if index == 0:
+        flow_id_info = pd.read_csv("models/test_data_flow_packet_counts.csv")
+        flow_id_info = flow_id_info.dropna()
+        flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
+        table = {}
+        for index, flow in flow_id_info.iterrows():
+            flow_id = flow["flow.id"]
+            id_values = flow_id.split(" ")
+            key = (id_values[0], id_values[1], id_values[2], id_values[3], id_values[4])
+            if table.get(key) is not None:
+                # This entry is a duplicate no need to insert again
+                continue
+            table[key] = key
+            # With all tuple elements
+            # try:
             entry = p4.TableEntry("MyIngress.flow_action_table")(
                 action="MyIngress.set_flow_action"
             )
@@ -362,10 +371,8 @@ def upload_model(model, feature_offset, code_table_offset, index):
             entry.match["meta.hdr_srcport"] = str(id_values[2])
             entry.match["meta.hdr_dstport"] = str(id_values[3])
             entry.match["hdr.ipv4.protocol"] = str(id_values[4])
-            entry.action["f_action"] = "1"
+            entry.action["f_action"] = "50"
             entry.insert()
-        except:
-            continue
     return len(feature_names), len(clf.estimators_)
 
 
@@ -374,6 +381,8 @@ def parse_args():
 
     parser.add_argument("--p4info", required=True)
     parser.add_argument("--json", required=True)
+    parser.add_argument("--grpc-port", required=True)
+    parser.add_argument("--device-id", required=True, type=int)
 
     parser.add_argument("--models", nargs="+", required=True)
     args = parser.parse_args()
@@ -385,8 +394,8 @@ def main():
 
     # Connecting to the switch
     p4.setup(
-        device_id=0,
-        grpc_addr="0.0.0.0:50051",
+        device_id=args.device_id,
+        grpc_addr=f"0.0.0.0:{args.grpc_port}",
         election_id=(0, 1),  # (high, low)
         config=p4.FwdPipeConfig(args.p4info, args.json),
         verbose=False,
