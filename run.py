@@ -10,6 +10,7 @@ from p4_mininet.host import P4Host
 from p4_mininet.switch import P4RuntimeSwitch
 
 from time import sleep
+import threading
 
 switches = {
     "s1": {  # CL2-0
@@ -71,16 +72,34 @@ class Topology(Topo):
         self.addLink(s1, s2)
         self.addLink(s2, s3)
 
+def program_switches(net, parallel):
+    if parallel:
+        print("*** Programming switches in parallel")
+        threads = []
+        for switch in net.switches:
+            t = threading.Thread(
+                target=program_switch, args=[net, switch.name, switches[switch.name]["models"]]
+            )
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
+    else:
+        for switch in net.switches:
+            program_switch(net, switch.name, switches[switch.name]["models"])
 
 def program_switch(net, sw_name, models):
     print(f"*** Programming switch {sw_name}")
+    sw = net.get(sw_name)
+
     args = ["python", "convert_RF_and_populate_tables.py"]
     args += ["--p4info", f"build/{switches[sw_name]['prog']}.p4.p4info.txtpb"]
     args += ["--json", f"build/{switches[sw_name]['prog']}.json"]
+    args += ["--grpc-port", str(sw.grpc_port)]
+    args += ["--device-id", str(sw.device_id)]
     args += ["--models"] + [*map(lambda m: f"models/{m}", models)]
 
-    sw = net.get(sw_name)
-    args += [">" , f"logs/{sw_name}.p4runtime-requests.log" , "2>&1"]
+    args += [">", f"logs/{sw_name}.p4runtime-requests.txt", "2>&1"]
     command = " ".join(args)
     print(command)
     sw.cmd(command)
@@ -96,14 +115,10 @@ def main():
     net.start()
     print("*** Network started")
 
-
     print("*** Programming switches")
     sleep(1)
-    program_switch(net, "s1", switches["s1"]["models"])
-    program_switch(net, "s2", switches["s2"]["models"])
-    program_switch(net, "s3", switches["s3"]["models"])
+    program_switches(net, True)
     print("*** Switches programmed")
-
 
     sleep(1)
 
