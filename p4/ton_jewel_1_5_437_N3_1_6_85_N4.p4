@@ -338,7 +338,7 @@ control MyIngress(
 
     /* Forward to a specific port upon classification */
     action ipv4_forward(PortId_t port) {
-        std_meta.egress_port = port;
+        std_meta.egress_spec = port;
     }
     /* Custom Do Nothing Action */
     action nop(){}
