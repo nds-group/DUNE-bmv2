@@ -564,9 +564,9 @@ control MyIngress(
 
     table voting_table {
         key = {
+            meta.class0: exact;
             meta.class1: exact;
             meta.class2: exact;
-            meta.class3: exact;
         }
         actions = {set_final_class; @defaultonly set_default_class;}
         size = 32;
@@ -676,21 +676,21 @@ control MyIngress(
                     else{  // ONE OF THE CLASSES
                         meta.final_class =  meta.class_model1;
                     }
-                    update_classified_flag_model1(meta.register_index);
+                    // update_classified_flag_model1(meta.register_index);
                     meta.is_refresh = 1; // Store the result and refresh the memory since it is a FL classification
                     meta.is_flow = 1;
                 }
                 // ** SET CLASS and NOTIFICATION DATA, and ACTIVATE DIGEST **
                 hdr.notify.inf_result = meta.final_class;
-                // hdr.notify.pkt_count = meta.pkt_count;
+                hdr.notify.pkt_count = meta.pkt_count;
                 meta.is_store = 1;
                 // Sending the digest after classification
                 digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
                 ipv4_forward(2);
             }
-            else {
-                read_classified_flag_model1(meta.register_index);
-            }
+            // else {
+            //     read_classified_flag_model1(meta.register_index);
+            // }
             // }
         }
         if (meta.f_action == 19) {  // If the flow is classified as OTHERS (obtained by the flow_action table)
@@ -731,7 +731,7 @@ control MyEgressDeparser(
     in my_ingress_headers_t hdr)
 {
     apply {
-        pkt.emit(hdr);
+        // pkt.emit(hdr);
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.tcp);

@@ -337,9 +337,9 @@ def upload_model(model, feature_offset, code_table_offset, index):
                             entry = p4.TableEntry("MyIngress.voting_table")(
                                 action="MyIngress.set_final_class"
                             )
-                            entry.match["meta.class1"] = str(i)
-                            entry.match["meta.class2"] = str(j)
-                            entry.match["meta.class3"] = str(k)
+                            entry.match["meta.class0"] = str(i)
+                            entry.match["meta.class1"] = str(j)
+                            entry.match["meta.class2"] = str(k)
                             entry.action["class_result"] = str(mode([i, j, k]))
                             entry.insert()
     except p4.UserError:

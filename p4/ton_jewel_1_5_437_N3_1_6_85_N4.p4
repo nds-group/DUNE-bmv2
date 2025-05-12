@@ -680,7 +680,7 @@ control MyEgressDeparser(
     in my_ingress_headers_t hdr)
 {
     apply {
-        pkt.emit(hdr);
+        // pkt.emit(hdr);
         pkt.emit(hdr.ethernet);
         pkt.emit(hdr.ipv4);
         pkt.emit(hdr.tcp);
