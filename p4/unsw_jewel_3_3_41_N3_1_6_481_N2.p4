@@ -316,7 +316,7 @@ control MyIngress(
     /* Register read action */
     action read_time_last_pkt(bit<INDEX_WIDTH> register_index) {
         reg_time_last_pkt.read(meta.time_last_pkt, (bit<32>)register_index);
-        reg_time_last_pkt.write((bit<32>)register_index, std_meta.ingress_global_timestamp[31:0]);
+        reg_time_last_pkt.write((bit<32>)register_index, std_meta.ingress_global_timestamp[31:0] * 1000);
     }
 
     //registers for ML inference - features
@@ -589,7 +589,7 @@ control MyIngress(
 
     /* Compute packet interarrival time (IAT)*/
     action get_iat_value(){
-        meta.iat = std_meta.ingress_global_timestamp[31:0] - meta.time_last_pkt;
+        meta.iat = std_meta.ingress_global_timestamp[31:0] * 1000 - meta.time_last_pkt;
     }
 
     apply {
