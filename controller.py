@@ -98,18 +98,9 @@ def main():
     registers = get_registers_from_switch(thrift_client)
 
     while True:
-        print("sniffing")
         dl = digest_list.sniff(timeout=1)
-
+        
         handle_digest(thrift_client, registers, args.classe, dl, output)
-        # Necessaray to stop the loop because digest_list.sniff()
-        # already catch KeyboardInterrupt
-        try:
-            print("sleeping")
-            time.sleep(1)
-        except KeyboardInterrupt:
-            print("exiting")
-            break
 
     p4.teardown()
     output.close()

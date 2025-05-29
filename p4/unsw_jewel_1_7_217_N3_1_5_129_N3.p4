@@ -297,7 +297,7 @@ control MyIngress(
     /* Register read action */
     action read_time_last_pkt(bit<INDEX_WIDTH> register_index) {
         reg_time_last_pkt.read(meta.time_last_pkt, (bit<32>)register_index);
-        reg_time_last_pkt.write((bit<32>)register_index, std_meta.ingress_global_timestamp[31:0]);
+        reg_time_last_pkt.write((bit<32>)register_index, std_meta.ingress_global_timestamp[31:0] * 1000);
     }
 
     //registers for ML inference - features
@@ -335,13 +335,13 @@ control MyIngress(
     /* Calculate hash of the 5-tuple to represent the flow ID */
     action get_flow_ID(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.flow_ID,HashAlgorithm.crc32,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 2<<32);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 1<<32);
 
     }
     /* Calculate hash of the 5-tuple to use as 1st register index */
     action get_register_index(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.register_index, HashAlgorithm.crc16,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 2<<INDEX_WIDTH);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 1<<INDEX_WIDTH);
     }
 
 
@@ -555,7 +555,7 @@ control MyIngress(
     }
     /* Compute packet interarrival time (IAT)*/
     action get_iat_value(){
-        meta.iat = std_meta.ingress_global_timestamp[31:0] - meta.time_last_pkt;
+        meta.iat = std_meta.ingress_global_timestamp[31:0] * 1000 - meta.time_last_pkt;
     }
 
     apply {
@@ -567,7 +567,7 @@ control MyIngress(
         // code here to execute if table experienced a hit
         if (meta.f_action == 50) {
 
-            if (hdr.notify.is_flow_classified == 2){
+            if (hdr.notify.is_flow_classified == 1){
                 read_only_flow_ID(meta.register_index);
                 // do not store the result but clear the register
                 meta.is_refresh = 0;
@@ -648,7 +648,16 @@ control MyIngress(
                         // hdr.notify.is_flow_classified = 1; // We do not need to set this field in the header since it is the final destination
                     }
 
-                    meta.is_store = 1;
+                    if (hdr.notify.inf_result < 22){
+                        // If the flow is classified as Others, just refresh the memory if necessary but do not store the result
+                        meta.is_store = 0; // do not store the result
+                    }
+                    else {
+                        // If the flow is classified as Others in the downstream switch, tag with the result obtained in the current switch.
+                        hdr.notify.inf_result = meta.final_class;
+                        hdr.notify.pkt_count = meta.pkt_count;
+                        meta.is_store = 1;
+                    }
                     // Sending the digest after classification
                     digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
                     // ipv4_forward(24);

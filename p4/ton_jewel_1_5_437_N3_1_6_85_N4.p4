@@ -318,13 +318,13 @@ control MyIngress(
     /* Calculate hash of the 5-tuple to represent the flow ID */
     action get_flow_ID(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.flow_ID,HashAlgorithm.crc32,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 2<<32);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 1<<32);
 
     }
     /* Calculate hash of the 5-tuple to use as 1st register index */
     action get_register_index(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.register_index, HashAlgorithm.crc16,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 2<<INDEX_WIDTH);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 1<<INDEX_WIDTH);
     }
 
     /* Assign class if at leaf node */

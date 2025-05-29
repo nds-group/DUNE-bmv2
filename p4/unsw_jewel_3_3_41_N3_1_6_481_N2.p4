@@ -358,13 +358,13 @@ control MyIngress(
     /* Calculate hash of the 5-tuple to represent the flow ID */
     action get_flow_ID(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.flow_ID,HashAlgorithm.crc32,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 2<<32);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol},(bit<64>) 1<<32);
 
     }
     /* Calculate hash of the 5-tuple to use as 1st register index */
     action get_register_index(bit<16> srcPort, bit<16> dstPort) {
         hash(meta.register_index, HashAlgorithm.crc16,(bit<64>) 0,{hdr.ipv4.src_addr,
-            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 2<<INDEX_WIDTH);
+            hdr.ipv4.dst_addr,srcPort, dstPort, hdr.ipv4.protocol}, (bit<64>) 1<<INDEX_WIDTH);
     }
 
     /* Assign class if at leaf node */
@@ -656,7 +656,7 @@ control MyIngress(
                 meta.class_model2 = meta.class_model2 + 1;  // It sets class_model2: the class from the second model
 
                 meta.is_refresh = 0;
-                hdr.notify.is_flow_classified = 1;
+                hdr.notify.is_flow_classified = 0;
 
                 if (meta.pkt_count < 3){ // If the packet count is less than N1+1
                     update_classified_flag_model2(meta.register_index); // store the result of second model
@@ -679,6 +679,9 @@ control MyIngress(
                     // update_classified_flag_model1(meta.register_index);
                     meta.is_refresh = 1; // Store the result and refresh the memory since it is a FL classification
                     meta.is_flow = 1;
+                    if (meta.final_class != 19) {
+                        hdr.notify.is_flow_classified = 1;
+                    }
                 }
                 // ** SET CLASS and NOTIFICATION DATA, and ACTIVATE DIGEST **
                 hdr.notify.inf_result = meta.final_class;
