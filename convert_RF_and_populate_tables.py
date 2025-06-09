@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import p4runtime_sh.shell as p4
 import numpy as np
 import pandas as pd
