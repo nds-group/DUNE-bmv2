@@ -136,14 +136,6 @@ class P4SimpleSwitchGRPC(Switch):
     def stop(self):
         self.cmd(f'pkill -f "{self.command}"')
 
-        args = ["python", "recover_csv.py"]
-        args += ["--output", f"logs/recovered_{self.name}.csv"]
-        args += ["--input", f"logs/{self.name}.log"]
-        args += ["--classe", str(self.sw_conf['controller_class'])]
-
-        command = ' '.join(args)
-        self.cmd(command + f' 2>&1')
-
     def connected(self):
         self.controller.start()
         return True
@@ -172,6 +164,23 @@ class MultiP4SimpleSwitchGRPC(P4SimpleSwitchGRPC):
             raise KeyboardInterrupt
         return switches
 
+    def batchShutdown(switches):
+        info('* Recovering csv from switches logs\n')
+        processes = []
+        for sw in switches:
+            sw.stop()
+            ps = multiprocessing.Process(target=recover_csv, args=[sw])
+            processes.append(ps)
+            ps.start()
+        try:
+            for ps in processes:
+                ps.join()
+        except KeyboardInterrupt:
+            for ps in processes:
+                ps.terminate()
+            raise KeyboardInterrupt
+        return switches
+
 def program_switch(sw):
     args = ["python", "convert_RF_and_populate_tables.py"]
     args += ["--p4info", sw.sw_p4info]
@@ -184,6 +193,15 @@ def program_switch(sw):
     command = " ".join(args)
     sw.cmd(command)
     info(sw.name + ' ')
+
+def recover_csv(sw):
+    args = ["python", "recover_csv.py"]
+    args += ["--output", f"logs/recovered_{sw.name}.csv"]
+    args += ["--input", f"logs/{sw.name}.log"]
+    args += ["--classe", str(sw.sw_conf['controller_class'])]
+
+    command = ' '.join(args)
+    sw.cmd(command + f' 2>&1')
 
 class P4Controller(Controller):
     def __init__(self, name, **kwargs):
