@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from mininet.log import setLogLevel
 from mininet.log import debug, info, error
 
@@ -50,7 +48,8 @@ class P4SimpleSwitchGRPC(Switch):
     next_device_id = 1
     next_thrift_port = 9091
     next_grpc_port = 50051
-    sw_path = 'simple_switch_grpc'
+    #sw_path = 'simple_switch_grpc'
+    sw_path = '/home/alexis/P4/custom/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc'
     START_TIMEOUT = 10
 
     def __init__(self, name, sw_conf=None, **kwargs):
@@ -136,6 +135,14 @@ class P4SimpleSwitchGRPC(Switch):
         
     def stop(self):
         self.cmd(f'pkill -f "{self.command}"')
+
+        args = ["python", "recover_csv.py"]
+        args += ["--output", f"logs/recovered_{self.name}.csv"]
+        args += ["--input", f"logs/{self.name}.log"]
+        args += ["--classe", str(self.sw_conf['controller_class'])]
+
+        command = ' '.join(args)
+        self.cmd(command + f' 2>&1')
 
     def connected(self):
         self.controller.start()
