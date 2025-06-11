@@ -1,46 +1,47 @@
 diff --git a/targets/simple_switch_grpc/switch_runner.cpp b/targets/simple_switch_grpc/switch_runner.cpp
-index 6824d68..fc0bb1a 100644
+index 6824d68..e7edec6 100644
 --- a/targets/simple_switch_grpc/switch_runner.cpp
 +++ b/targets/simple_switch_grpc/switch_runner.cpp
-@@ -418,6 +418,42 @@ class NotificationsCapture : public bm::TransportIface {
+@@ -418,6 +418,43 @@ class NotificationsCapture : public bm::TransportIface {
      pi_msg->entry_size = data_size;
      pi_msg->entries = new char[size];
      std::memcpy(pi_msg->entries, data, size);
 +    for (size_t i = 0; i < pi_msg->num_entries; i++) {
 +        size_t offset = i * pi_msg->entry_size;
-+        std::cout << "digest_content=";
-+        // Source address
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 1]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 2]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 3]) << ",";
-+        // Destination address
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 4]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 5]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 6]) << ".";
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 7]) << ",";
-+        // Source port
-+        std::cout << ((static_cast<unsigned char>(pi_msg->entries[offset + 8]) << 8)
-+            + static_cast<unsigned char>(pi_msg->entries[offset + 9])) << ",";
-+        // Destination port
-+        std::cout << ((static_cast<unsigned char>(pi_msg->entries[offset + 10]) << 8)
-+            + static_cast<unsigned char>(pi_msg->entries[offset + 11])) << ",";
-+        // Protocol
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 12]) << ",";
-+        // Class
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 13]) << ",";
-+        // Pkt_count
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 14]) << ",";
-+        // Register index
-+        std::cout << ((static_cast<unsigned char>(pi_msg->entries[offset + 15]) << 8)
-+            + static_cast<unsigned char>(pi_msg->entries[offset + 16])) << ",";
-+        // Refresh
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 17]) << ",";
-+        // Store
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 18]) << ",";
-+        // Flow
-+        std::cout << +static_cast<unsigned char>(pi_msg->entries[offset + 19]);
-+        std::cout << std::endl;
++        bm::Logger::get()->info(
++                "digest_content={}.{}.{}.{},{}.{}.{}.{},{},{},{},{},{},{},{},{},{}",
++                // Source address
++                +static_cast<unsigned char>(pi_msg->entries[offset]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 1]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 2]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 3]),
++                // Destination address
++                +static_cast<unsigned char>(pi_msg->entries[offset + 4]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 5]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 6]),
++                +static_cast<unsigned char>(pi_msg->entries[offset + 7]),
++                // Source port
++                ((static_cast<unsigned char>(pi_msg->entries[offset + 8]) << 8)
++                    + static_cast<unsigned char>(pi_msg->entries[offset + 9])),
++                // Destination port
++                ((static_cast<unsigned char>(pi_msg->entries[offset + 10]) << 8)
++                    + static_cast<unsigned char>(pi_msg->entries[offset + 11])),
++                // Protocol
++                +static_cast<unsigned char>(pi_msg->entries[offset + 12]),
++                // Class
++                +static_cast<unsigned char>(pi_msg->entries[offset + 13]),
++                // Pkt_count
++                +static_cast<unsigned char>(pi_msg->entries[offset + 14]),
++                // Register index
++                ((static_cast<unsigned char>(pi_msg->entries[offset + 15]) << 8)
++                    + static_cast<unsigned char>(pi_msg->entries[offset + 16])),
++                // Refresh
++                +static_cast<unsigned char>(pi_msg->entries[offset + 17]),
++                // Store
++                +static_cast<unsigned char>(pi_msg->entries[offset + 18]),
++                // Flow
++                +static_cast<unsigned char>(pi_msg->entries[offset + 19])
++                );
 +    }
      pi_learn_new_msg(pi_msg);
    }

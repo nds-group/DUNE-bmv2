@@ -44,6 +44,8 @@ def main():
 
     lines = load_file(args.input)
     digest_content = list(filter((lambda line: 'digest_content=' in line), lines))
+    for digest in digest_content:
+        print(digest)
 
     output = open(args.output, 'w', 1)
     header = 'source_addr,destin_addr,source_port,destin_port,protocol,pkt_count,is_flow,flow_packet_class'
