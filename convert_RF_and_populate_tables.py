@@ -412,9 +412,9 @@ def main():
 
     # Configure digest
     d = p4.DigestEntry("flow_class_digest")
-    d.ack_timeout_ns = 2 * 1000000000
-    d.max_timeout_ns = 2 * 1000000000
-    d.max_list_size = 2000
+    d.ack_timeout_ns = 10 * 1000000000
+    d.max_timeout_ns = 10 * 1000000000
+    d.max_list_size = 10000
     d.insert()
 
     p4.teardown()
