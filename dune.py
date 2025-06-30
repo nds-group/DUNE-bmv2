@@ -1,5 +1,5 @@
 from mininet.log import setLogLevel
-from mininet.log import debug, info, error
+from mininet.log import debug, info, warn, error
 
 from mininet.node import Host, Switch, Controller
 from mininet.link import TCLink
@@ -19,8 +19,8 @@ import time
 
 
 def check_listening_on_port(port):
-    for c in psutil.net_connections(kind="inet"):
-        if c.status == "LISTEN" and c.laddr[1] == port:
+    for c in psutil.net_connections(kind='inet'):
+        if c.status == 'LISTEN' and c.laddr[1] == port:
             return True
     return False
 
@@ -32,15 +32,15 @@ class P4Host(Host):
     def config(self, **_params):
         r = Host.config(self, **_params)
 
-        self.defaultIntf().rename('eth0')
-        for off in ["rx", "tx", "sg"]:
-            cmd = f"/sbin/ethtool --offload eth0 {off} off"
+        intf = self.defaultIntf()
+        for off in ['rx', 'tx', 'sg']:
+            cmd = f'/sbin/ethtool --offload {intf} {off} off'
             self.cmd(cmd)
 
         # disable IPv6
-        self.cmd("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
-        self.cmd("sysctl -w net.ipv6.conf.default.disable_ipv6=1")
-        self.cmd("sysctl -w net.ipv6.conf.lo.disable_ipv6=1")
+        self.cmd('sysctl -w net.ipv6.conf.all.disable_ipv6=1')
+        self.cmd('sysctl -w net.ipv6.conf.default.disable_ipv6=1')
+        self.cmd('sysctl -w net.ipv6.conf.lo.disable_ipv6=1')
 
         return r
 
@@ -48,26 +48,34 @@ class P4SimpleSwitchGRPC(Switch):
     next_device_id = 1
     next_thrift_port = 9091
     next_grpc_port = 50051
-    #sw_path = 'simple_switch_grpc'
-    sw_path = '/home/alexis/P4/custom/behavioral-model/targets/simple_switch_grpc/simple_switch_grpc'
+    sw_path = 'simple_switch_grpc'
     START_TIMEOUT = 10
 
-    def __init__(self, name, sw_conf=None, **kwargs):
+    def __init__(self, name, selected_model=None, config=None, **kwargs):
         Switch.__init__(self, name, **kwargs)
-        self.sw_conf = sw_conf
-        assert self.sw_conf
+        print('*'*80)
+        print(name, selected_model)
+        # TODO : handle no deployed model
+        self.selected_model = selected_model
+        assert self.selected_model
+        self.config = config
+        assert self.config
 
         self.sw_path = P4SimpleSwitchGRPC.sw_path
         assert self.sw_path
         pathCheck(self.sw_path)
-       
-        self.sw_json = f'build/{self.sw_conf["prog"]}.json'
+
+
+        selected_model_conf = self.config['models'][self.selected_model]
+        p4 = selected_model_conf['p4']
+
+        self.sw_json = 'build/' + p4 + '.json'
         throw_if_not_readable(self.sw_json)
         
-        self.sw_p4info = f'build/{self.sw_conf["prog"]}.p4.p4info.txtpb'
+        self.sw_p4info = 'build/' + p4 + '.p4.p4info.txtpb'
         throw_if_not_readable(self.sw_p4info)
 
-        self.models = [*map(lambda m: f"models/{m}", self.sw_conf["models"])]
+        self.models = [*map(lambda m: 'models/' + m, selected_model_conf['files'])]
         for path in self.models:
             throw_if_not_readable(path)
 
@@ -78,14 +86,14 @@ class P4SimpleSwitchGRPC(Switch):
         P4SimpleSwitchGRPC.next_grpc_port += 1
         if check_listening_on_port(self.grpc_port):
             raise Exception(
-                    f"{self.name} cannot bind port {self.grpc_port} because it is bound by another process\n"
+                    f'{self.name} cannot bind port {self.grpc_port} because it is bound by another process\n'
                 )
 
         self.thrift_port = P4SimpleSwitchGRPC.next_thrift_port
         P4SimpleSwitchGRPC.next_thrift_port += 1
         if check_listening_on_port(self.thrift_port):
             raise Exception(
-                    f"{self.name} cannot bind port {self.thrift_port} because it is bound by another process\n"
+                    f'{self.name} cannot bind port {self.thrift_port} because it is bound by another process\n'
                 )
         
 
@@ -95,7 +103,7 @@ class P4SimpleSwitchGRPC(Switch):
                 self.grpc_port, 
                 self.thrift_port, 
                 self.device_id, 
-                self.sw_conf['controller_class']
+                self.config['models'][self.selected_model]['controller_class']
             )
 
         args = [self.sw_path]
@@ -124,7 +132,7 @@ class P4SimpleSwitchGRPC(Switch):
 
     def check_switch_started(self, pid):
         for _ in range(self.START_TIMEOUT * 2):
-            if not os.path.exists(os.path.join("/proc", str(pid))):
+            if not os.path.exists(os.path.join('/proc', str(pid))):
                 return False
             listening = check_listening_on_port(self.grpc_port)
             listening = check_listening_on_port(self.thrift_port) and listening
@@ -140,12 +148,13 @@ class P4SimpleSwitchGRPC(Switch):
         self.controller.start()
         return True
 
-controllerSwitchMap = {}
+switchToControllerMap = {}
+switchToModelMap = {}
 
-class MultiP4SimpleSwitchGRPC(P4SimpleSwitchGRPC):
+class ControlledP4SimpleSwitchGRPC(P4SimpleSwitchGRPC):
     # Start the P4SimpleSwitchGRPC with its associated controller
     def start(self, controllers):
-        return P4SimpleSwitchGRPC.start(self, [controllerSwitchMap[self.name]])
+        return P4SimpleSwitchGRPC.start(self, [switchToControllerMap[self.name]])
 
     # Using batchStartup to program the switches in parallel
     def batchStartup(switches):
@@ -164,44 +173,18 @@ class MultiP4SimpleSwitchGRPC(P4SimpleSwitchGRPC):
             raise KeyboardInterrupt
         return switches
 
-    def batchShutdown(switches):
-        info('* Recovering csv from switches logs\n')
-        processes = []
-        for sw in switches:
-            sw.stop()
-            ps = multiprocessing.Process(target=recover_csv, args=[sw])
-            processes.append(ps)
-            ps.start()
-        try:
-            for ps in processes:
-                ps.join()
-        except KeyboardInterrupt:
-            for ps in processes:
-                ps.terminate()
-            raise KeyboardInterrupt
-        return switches
-
 def program_switch(sw):
-    args = ["python", "convert_RF_and_populate_tables.py"]
-    args += ["--p4info", sw.sw_p4info]
-    args += ["--json", sw.sw_json]
-    args += ["--grpc-port", str(sw.grpc_port)]
-    args += ["--device-id", str(sw.device_id)]
-    args += ["--models"] + sw.models
+    args = ['python', 'convert_RF_and_populate_tables.py']
+    args += ['--p4info', sw.sw_p4info]
+    args += ['--json', sw.sw_json]
+    args += ['--grpc-port', str(sw.grpc_port)]
+    args += ['--device-id', str(sw.device_id)]
+    args += ['--models'] + sw.models
 
-    args += [">", f"logs/{sw.name}.p4runtime-requests.txt", "2>&1"]
-    command = " ".join(args)
+    args += ['>', f'logs/{sw.name}.p4runtime-requests.txt', '2>&1']
+    command = ' '.join(args)
     sw.cmd(command)
     info(sw.name + ' ')
-
-def recover_csv(sw):
-    args = ["python", "recover_csv.py"]
-    args += ["--output", f"logs/recovered_{sw.name}.csv"]
-    args += ["--input", f"logs/{sw.name}.log"]
-    args += ["--classe", str(sw.sw_conf['controller_class'])]
-
-    command = ' '.join(args)
-    sw.cmd(command + f' 2>&1')
 
 class P4Controller(Controller):
     def __init__(self, name, **kwargs):
@@ -219,14 +202,14 @@ class P4Controller(Controller):
         self.classe = classe 
         self.is_config = True
 
-        args = ["python", "controller.py"]
-        args += ["--output", f"logs/{self.name}.csv"]
-        args += ["--grpc-port", str(self.grpc_port)] 
-        args += ["--thrift-port", str(self.thrift_port)] 
-        args += ["--device-id", str(self.device_id)] 
-        args += ["--classe", str(self.classe)]
+        args = ['python', 'controller.py']
+        args += ['--output', f'logs/{self.name}.csv']
+        args += ['--grpc-port', str(self.grpc_port)] 
+        args += ['--thrift-port', str(self.thrift_port)] 
+        args += ['--device-id', str(self.device_id)] 
+        args += ['--classe', str(self.classe)]
 
-        self.command = " ".join(args)
+        self.command = ' '.join(args)
 
     # Prevent automatic start, the associated switch needs to start first
     def start(self):
@@ -243,7 +226,7 @@ class Dune():
         info('*** Creating network\n')
         self.net = Mininet(
                 host=P4Host,
-                switch=MultiP4SimpleSwitchGRPC,
+                switch=ControlledP4SimpleSwitchGRPC,
                 controller=P4Controller,
                 link=TCLink,
                 waitConnected=True
@@ -254,13 +237,96 @@ class Dune():
         with open(json_path, 'r') as f:
             self.config = json.load(f)
 
+    def assignModels(self):
+        # Create graph of the network
+        # TODO : move import
+        import networkx as nx
+        G = nx.Graph()
+        switches = self.config['switches']
+        hosts = self.config['hosts']
+        links = self.config['links']
+        G.add_nodes_from(switches)
+        G.add_nodes_from(hosts)
+        G.add_edges_from(links)
+
+        # Draw
+        # TODO : refactor
+        display = 0
+        if display:
+            import matplotlib.pyplot as plt
+            pos = nx.spring_layout(G)
+            nx.draw_networkx_nodes(G, pos, nodelist=switches, node_color='tab:blue')
+            nx.draw_networkx_nodes(G, pos, nodelist=hosts, node_color='tab:red')
+            nx.draw_networkx_edges(G, pos, edgelist=links)
+            nx.draw_networkx_labels(G, pos)
+            #nx.draw(G, with_labels=True)
+            plt.show()
+
+        models = self.config['models']
+        # TODO : move imports
+        import pulp
+        import itertools
+        prob = pulp.LpProblem('Assign', pulp.LpMinimize)
+
+        # Deployment variables
+        X = {}
+        for sw in switches:
+            X[sw] = {}
+            for m in models: 
+                X[sw][m] = pulp.LpVariable(f'x_{sw}_{m}', cat='Binary')
+
+        # Objective function
+        # Info : For now we minize the number of deployed models
+        prob += pulp.lpSum(X)
+
+        # Creating paths
+        pairs = itertools.permutations(hosts, 2)
+        paths = []
+        for p1, p2 in pairs:
+            for path in nx.all_simple_paths(G, p1, p2):
+                sw_in_path = list(filter(lambda node: node in switches, path))
+                paths.append(sw_in_path)
+    
+        # At least one of each model on the path
+        for path in paths:
+            for m in models:
+                expr = pulp.LpAffineExpression()
+                for sw in path:
+                    expr.addInPlace(X[sw][m], 1)
+                prob += expr >= 1
+
+        # Models in order
+        for path in paths:
+            for m in models:
+                prev = self.config['models'][m]['previous']
+                if prev is not None:
+                    accumulator = [path[:i + 1] for i in range(len(path))]
+                    for sws in accumulator:
+                        current_model_switch = sws.pop()
+                        expr = pulp.LpAffineExpression()
+                        for sw in sws:
+                            expr.addInPlace(X[sw][prev], 1)
+                        prob += expr >= X[current_model_switch][m]
+
+        prob.solve()
+        # TODO : use log and remove prints
+        print("Status:", pulp.LpStatus[prob.status])
+        for v in prob.variables():
+            print(v.name, "=", v.varValue)
+        for sw in switches:
+            switchToModelMap[sw] = None
+            for m in models: 
+                if X[sw][m].varValue == 1:
+                    switchToModelMap[sw] = m
+
+
     def configureFromJson(self):
         info('*** Adding controllers:\n')
         for sw in self.config['switches']:
-            name = f'c{sw["name"][1:]}'
+            name = f'c{sw[1:]}'
             info(name + ' ')
             c = self.net.addController(name)
-            controllerSwitchMap[sw['name']] = c
+            switchToControllerMap[sw] = c
         info('\n')
 
         info('*** Adding hosts:\n')
@@ -271,14 +337,17 @@ class Dune():
 
         info('*** Adding switches:\n')
         for sw in self.config['switches']:
-            info(sw['name'] + ' ')
-            self.net.addSwitch(sw['name'], sw_conf=sw)
+            info(sw + ' ')
+            self.net.addSwitch(sw, selected_model=switchToModelMap[sw], config=self.config)
         info('\n')
 
         info('*** Adding links:\n')
         for link in self.config['links']:
             info(f'({link[0]}, {link[1]}) ')
-            self.net.addLink(link[0], link[1])
+            intfs = self.net.addLink(link[0], link[1])
+            # Jumbo frame support 
+            self.net.get(link[0]).cmd(f'ip link set dev {intfs.intf1} mtu 9000')
+            self.net.get(link[1]).cmd(f'ip link set dev {intfs.intf2} mtu 9000')
         info('\n')
         self.configured = True
 
@@ -290,13 +359,22 @@ class Dune():
     def stop(self):
         self.net.stop()
 
-def main():
-    setLogLevel('info')
+    def CLI(self):
+        CLI(self.net)
 
-    dune = Dune('topo.json')
+def main():
+    setLogLevel('debug')
+
+    #path = input('Path for the topology file: ')
+    #dune = Dune(path)
+    dune = Dune('topo_simple.json')
+    #dune = Dune('topo.json')
+
+    # TODO : move next line and add checks
+    dune.assignModels()
 
     dune.start()
-    CLI(dune.net)
+    dune.CLI()
     dune.stop()
 
 
@@ -304,18 +382,18 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        info( "\n\nKeyboard Interrupt. Shutting down and cleaning up...\n\n")
+        info( '\n\nKeyboard Interrupt. Shutting down and cleaning up...\n\n')
         cleanup()
     except Exception:
         # Print exception
         type_, val_, trace_ = sys.exc_info()
-        errorMsg = ( "-"*80 + "\n" +
-                     "Caught exception. Cleaning up...\n\n" +
-                     "%s: %s\n" % ( type_.__name__, val_ ) +
-                     "-"*80 + "\n" )
+        errorMsg = ( '-'*80 + '\n' +
+                     'Caught exception. Cleaning up...\n\n' +
+                     '%s: %s\n' % ( type_.__name__, val_ ) +
+                     '-'*80 + '\n' )
         error( errorMsg )
         # Print stack trace to debug log
         import traceback
         stackTrace = traceback.format_exc()
-        debug( stackTrace + "\n" )
+        debug( stackTrace + '\n' )
         cleanup()

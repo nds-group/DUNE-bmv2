@@ -429,7 +429,7 @@ control MyIngress(
     }
     action set_def_flow_action() {
         meta.f_action = 34;
-        drop();
+        //drop();
     }
 
     // FEATURES: ['ip.len' 'dstport' 'udp.length' 'Flow Duration' 'Flow IAT Max' 'srcport' 'tcp.window_size_value']
@@ -566,12 +566,12 @@ control MyIngress(
         get_register_index(meta.hdr_srcport, meta.hdr_dstport);
         // code here to execute if table experienced a hit
         if (meta.f_action == 50) {
-
             if (hdr.notify.is_flow_classified == 1){
                 read_only_flow_ID(meta.register_index);
                 // do not store the result but clear the register
                 meta.is_refresh = 0;
                 meta.is_store = 0;
+                meta.is_flow = 1;
                 meta.pkt_count = hdr.notify.pkt_count;
                 meta.final_class = hdr.notify.inf_result;
                 // Sending the digest after classification
@@ -659,7 +659,9 @@ control MyIngress(
                         meta.is_store = 1;
                     }
                     // Sending the digest after classification
-                    digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
+                    if (meta.is_flow == 1) {
+                        digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
+                    }
                     // ipv4_forward(24);
                 }
                 else {
@@ -667,6 +669,7 @@ control MyIngress(
                 }
             }
         }
+        ipv4_forward(2);
     } //END OF APPLY
 } //END OF INGRESS CONTROL
 

@@ -395,7 +395,7 @@ control MyIngress(
     }
     action set_def_flow_action() {
         meta.f_action = 34;
-        drop();
+        //drop();
     }
 
     // FEATURES: ['tcp.window_size_value' 'ip.len' 'srcport' 'udp.length' 'dstport']
@@ -533,7 +533,7 @@ control MyIngress(
                 hdr.notify.is_flow_classified = 1; // Required for the downstream switches
                 // Sending the digest after classification
                 digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
-                ipv4_forward(2);
+                //ipv4_forward(2);
             }
             else {
                 // modify timestamp register
@@ -634,8 +634,10 @@ control MyIngress(
                         meta.is_store = 1;
                     }
                     // Sending the digest after classification
-                    digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
-                    ipv4_forward(2);
+                    if (meta.is_flow == 1) {
+                        digest<flow_class_digest>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, meta.final_class, meta.pkt_count, meta.register_index, meta.is_refresh, meta.is_store, meta.is_flow});
+                    }
+                    //ipv4_forward(2);
                 }
                 else {
                     read_classified_flag_model2(meta.register_index); // Store the classification results obtained from the second model
@@ -646,9 +648,10 @@ control MyIngress(
             hdr.notify.inf_result = meta.f_action;
             hdr.notify.is_flow_classified = 0;
             hdr.notify.pkt_count = 5;
-            ipv4_forward(2);
+            //ipv4_forward(2);
         }
         // }
+        ipv4_forward(2);
     } //END OF APPLY
 } //END OF INGRESS CONTROL
 
