@@ -5,7 +5,7 @@ DIRS = $(BUILD_DIR) $(PCAP_DIR) $(LOG_DIR)
 
 P4C = p4c-bm2-ss
 SOURCES_DIR = p4
-SOURCES = $(shell find $(SOURCES_DIR) -type f -name "*.p4")
+SOURCES = $(wildcard $(SOURCES_DIR)/*.p4)
 TARGETS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(BUILD_DIR)/%.json)
 
 all: run
