@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-
 import p4runtime_sh.shell as p4
 import numpy as np
 import pandas as pd
 import warnings
 from statistics import mode
 from ipaddress import ip_address
+import argparse
 
 pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
@@ -258,42 +257,24 @@ def extractKBits(num):
     return num_dec
 
 
-def main():
-    # Connecting to the switch
-    p4.setup(
-        device_id=0,
-        grpc_addr="0.0.0.0:50051",
-        election_id=(0, 1),  # (high, low)
-        config=p4.FwdPipeConfig(
-            "build/unsw_jewel_14_3_6_N3.p4.p4info.txtpb",
-            "build/unsw_jewel_14_3_6_N3.json",
-        ),
-        verbose=False,
-    )
-
-    np.random.seed(42)
-
+def upload_model(model, feature_offset, code_table_offset, index):
     # import and get entries from trained models ##
-    clf = pd.read_pickle("model/model_unsw_jewel_14_3_6_n3.sav")
+    clf = pd.read_pickle(model)
 
     # list the feature names
     feature_names = clf.feature_names_in_
     print(feature_names)
 
-    tree_code0 = []
-    tree_code1 = []
-    tree_code2 = []
+    tree_code_sizes = [[] for _ in range(len(clf.estimators_))]
 
     for fea in range(0, len(feature_names)):
         Ranges, Codes = get_feature_codes_with_ranges(
             get_feature_table(get_splits(clf, feature_names), feature_names[fea]),
             len(clf.estimators_),
         )
-        for ran, cods0, cods1, cods2 in zip(
-            Ranges, Codes.iloc[:, 0], Codes.iloc[:, 1], Codes.iloc[:, 2]
-        ):
-            entry = p4.TableEntry(f"MyIngress.table_feature{fea}")(
-                action=f"MyIngress.SetCode{fea}"
+        for i, ran in enumerate(Ranges):
+            entry = p4.TableEntry(f"MyIngress.table_feature{fea + feature_offset}")(
+                action=f"MyIngress.SetCode{fea + feature_offset}"
             )
             start = ran.split(",")[0]
             end = (
@@ -303,21 +284,14 @@ def main():
                 if ran == Ranges[len(Ranges) - 1]
                 else ran.split(",")[1]
             )
-            entry.match[f"feature{fea}"] = f"{start}..{end}"
-            entry.action["code0"] = str(cods0)
-            entry.action["code1"] = str(cods1)
-            entry.action["code2"] = str(cods2)
+            entry.match[f"feature{fea + feature_offset}"] = f"{start}..{end}"
+            for j in range(0, len(clf.estimators_)):
+                entry.action[f"code{j}"] = str(Codes.iloc[i, j])
             entry.priority = 1
             entry.insert()
-        tree_code0.append(len(cods0) - 2)
-        tree_code1.append(len(cods1) - 2)
-        tree_code2.append(len(cods2) - 2)
+        for j in range(0, len(clf.estimators_)):
+            tree_code_sizes[j].append(len(Codes.iloc[0, j]) - 2)
 
-    tree_code_sizes = [
-        tree_code0,  # meta.codeword0_*
-        tree_code1,  # meta.codeword1_*
-        tree_code2,  # meta.codeword2_*
-    ]
     print(tree_code_sizes)
 
     for tree_id in range(0, len(clf.estimators_)):
@@ -332,8 +306,8 @@ def main():
         print("Final_Codes Length: ", len(Final_Masks))
         # print('Classe Length: ', len(Classe.unique()))
         for cod, mas, cla, cer in zip(Final_Codes, Final_Masks, Classe, Certain):
-            entry = p4.TableEntry(f"MyIngress.code_table{tree_id}")(
-                action=f"MyIngress.SetClass{tree_id}"
+            entry = p4.TableEntry(f"MyIngress.code_table{tree_id + code_table_offset}")(
+                action=f"MyIngress.SetClass{tree_id + code_table_offset}"
             )
             start = 0
             cod = str(cod).removeprefix("0b")
@@ -343,37 +317,50 @@ def main():
                 mask = f"0b{mas[start : start + size]}"
                 start += size
                 if int(mask, base=0):  # Ignore the "Don't care" mask
-                    entry.match[f"meta.codeword{tree_id}_{i}"] = f"{code}&&&{mask}"
+                    entry.match[f"meta.codeword{tree_id + code_table_offset}_{i}"] = (
+                        f"{code}&&&{mask}"
+                    )
             entry.action["classe"] = str(cla + 1)
             entry.priority = 1
             entry.insert()
 
-    for i in range(1, 27):
-        for j in range(1, 27):
-            for k in range(1, 27):
-                if (i != j) & (j != k) & (i != k):
-                    pass
-                else:
-                    entry = p4.TableEntry("MyIngress.voting_table")(
-                        action="MyIngress.set_final_class"
-                    )
-                    entry.match["meta.class0"] = str(i)
-                    entry.match["meta.class1"] = str(j)
-                    entry.match["meta.class2"] = str(k)
-                    entry.action["class_result"] = str(mode([i, j, k]))
-                    entry.insert()
+    try:
+        if index == 0:
+            for i in range(1, 3):
+                for j in range(1, 3):
+                    for k in range(1, 3):
+                        if (i != j) & (j != k) & (i != k):
+                            pass
+                        else:
+                            entry = p4.TableEntry("MyIngress.voting_table")(
+                                action="MyIngress.set_final_class"
+                            )
+                            entry.match["meta.class0"] = str(i)
+                            entry.match["meta.class1"] = str(j)
+                            entry.match["meta.class2"] = str(k)
+                            entry.action["class_result"] = str(mode([i, j, k]))
+                            entry.insert()
+    except p4.UserError:
+        print("!!! This table does not seem to have a voting table")
 
     # Get 'INFERENCE FORWARDING BLOCK' table entries
     # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
     # ACTION: Forwarding: 0 Inference: 1
-    flow_id_info = pd.read_csv("model/test_data_flow_packet_counts.csv")
-    flow_id_info = flow_id_info.dropna()
-    flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
-    for index, flow in flow_id_info.iterrows():
-        flow_id = flow["flow.id"]
-        id_values = flow_id.split(" ")
-        # With all tuple elements
-        try:
+    if index == 0:
+        flow_id_info = pd.read_csv("models/test_data_flow_packet_counts.csv")
+        flow_id_info = flow_id_info.dropna()
+        flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
+        table = {}
+        for index, flow in flow_id_info.iterrows():
+            flow_id = flow["flow.id"]
+            id_values = flow_id.split(" ")
+            key = (id_values[0], id_values[1], id_values[2], id_values[3], id_values[4])
+            if table.get(key) is not None:
+                # This entry is a duplicate no need to insert again
+                continue
+            table[key] = key
+            # With all tuple elements
+            # try:
             entry = p4.TableEntry("MyIngress.flow_action_table")(
                 action="MyIngress.set_flow_action"
             )
@@ -382,16 +369,52 @@ def main():
             entry.match["meta.hdr_srcport"] = str(id_values[2])
             entry.match["meta.hdr_dstport"] = str(id_values[3])
             entry.match["hdr.ipv4.protocol"] = str(id_values[4])
-            entry.action["f_action"] = "1"
+            entry.action["f_action"] = "50"
             entry.insert()
-        except:
-            continue
+    return len(feature_names), len(clf.estimators_)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--p4info", required=True)
+    parser.add_argument("--json", required=True)
+    parser.add_argument("--grpc-port", required=True)
+    parser.add_argument("--device-id", required=True, type=int)
+
+    parser.add_argument("--models", nargs="+", required=True)
+    args = parser.parse_args()
+    return args
+
+
+def main():
+    args = parse_args()
+
+    # Connecting to the switch
+    p4.setup(
+        device_id=args.device_id,
+        grpc_addr=f"0.0.0.0:{args.grpc_port}",
+        election_id=(0, 1),  # (high, low)
+        config=p4.FwdPipeConfig(args.p4info, args.json),
+        verbose=False,
+    )
+
+    np.random.seed(42)
+
+    feature_offset = 0
+    code_table_offset = 0
+    for index, model in enumerate(args.models):
+        len_features, len_code_tables = upload_model(
+            model, feature_offset, code_table_offset, index
+        )
+        feature_offset += len_features
+        code_table_offset += len_code_tables
 
     # Configure digest
     d = p4.DigestEntry("flow_class_digest")
-    d.ack_timeout_ns = 1000000000
-    d.max_timeout_ns = 1000000000
-    d.max_list_size = 100
+    d.ack_timeout_ns = 10 * 1000000000
+    d.max_timeout_ns = 10 * 1000000000
+    d.max_list_size = 10000
     d.insert()
 
     p4.teardown()

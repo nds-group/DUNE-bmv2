@@ -11,7 +11,7 @@ TARGETS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(BUILD_DIR)/%.json)
 all: run
 
 run: build
-	sudo PATH="$(PATH)" python3 run.py
+	sudo PATH="$(PATH)" python3 dune.py
 
 stop:
 	sudo PATH="$(PATH)" `which mn` -c
