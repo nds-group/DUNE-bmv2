@@ -69,9 +69,10 @@ control ComputeHashes(
     }
 }
 
-control CheckCollision(
+control CheckCollisionAndNewFlow(
     in Hash_t hashes, 
-    inout Dune_h dune
+    inout Dune_h dune,
+    out bool new_flow
 )
 {
     register<bit<1>>(NB_REG_ENTRIES) flow_id_used;
@@ -89,13 +90,28 @@ control CheckCollision(
         if ((bool)used) {
             flow_ids.read(flow_id, hashes.reg_idx32);
             dune.collision = flow_id != hashes.flow_id;
+            new_flow = false;
         } else {
             dune.collision = false;
+            new_flow = true;
         }
         UpdateUsedFlowIds();
     }
 }
 
+control GetPktCount(
+    in Hash_t hashes,
+    out bit<8> pkt_count
+)
+{
+    register<bit<8>>(NB_REG_ENTRIES) pkt_counts;
+    apply {
+        pkt_counts.read(pkt_count, hashes.reg_idx32);
+        pkt_count = pkt_count + 1;
+        pkt_counts.write(hashes.reg_idx32, pkt_count);
+    }
+}
+    
 control DuneIngress(
     inout Headers_t hdr,
     inout Metadata_t meta,
@@ -118,13 +134,17 @@ control DuneIngress(
 
     Hash_t hashes;
 
+    bool new_flow;
+    bit<8> pkt_count;
+    StatefullFeatures_t statefull_features;
+
     apply {
         InsertDuneHeaderIfNotPresent();
         // Check if flow is known and populate meta.flow_class
         IsFlowClassKnownLocally.apply(hdr, meta);
         if (UNKNOWN_FLOW_CLASS == meta.flow_class) {
             ComputeHashes.apply(hashes, hdr, meta);
-            CheckCollision.apply(hashes, hdr.dune);
+            CheckCollisionAndNewFlow.apply(hashes, hdr.dune, new_flow);
             if (UNKNOWN_FLOW_CLASS != hdr.dune.flow_class) {
                 // Flow is known by a previous switch but not locally
                 // TODO
@@ -133,26 +153,17 @@ control DuneIngress(
                 digest<FlowDigest_t>(1, {});
             } else {
                 // Flow is neither know by a previous switch nor locally
+                InitStatefullFeatures.apply(statefull_features);
                 if (!hdr.dune.collision) {
-                    // TODO : 
-                    // - get and update packet count
-                    // - same for statefull features (provided in separate controll block ?)
-                    //   the following is a temporary name
-                    GetAndUpdateStatefullFeatures.apply();
+                    GetPktCount.apply(hashes, pkt_count);
                 } else {
-                    // TODO :
-                    // - pkt count = 0
+                    pkt_count = 0;
                 }
-
-                // TODO :
-                // if pkt count < inference point
-                // - set flow features to 0 (provided in separate controll block ?)
-                //   the following is a temporary name
-                ResetFlowFeaturesIfInferencePointNotReached.apply();
-
-                // TODO :
-                // - Apply model (provided in separate controll block ?)
-                //   the following is a temporary name
+                UpdateStatefullFeaturesIfInferencePointReached.apply(
+                    pkt_count,
+                    new_flow,
+                    statefull_features
+                );
                 InferenceModel.apply();
             }
         } else {
