@@ -98,11 +98,22 @@ control DuneIngress(
         }
     }
 
+    register<bool>(NB_REG_ENTRIES) flow_id_used;
     register<FlowId_t>(NB_REG_ENTRIES) flow_ids;
     action CheckColision(in Hash_t hashes, inout Dune_h dune) {
+        bool used;
         FlowId_t flow_id;
-        flow_ids.read(flow_id, hashes.reg_idx32);
-        dune.collision = flow_id != hashes.flow_id;
+
+        flow_id_used.read(used, hashes.reg_idx32);
+        if (used) {
+            flow_ids.read(flow_id, hashes.reg_idx32);
+            dune.collision = flow_id != hashes.flow_id;
+        } else {
+            dune.collision = false;
+        }
+    }
+    action UpdateUsedFlowIds(in Hash_t hashes) {
+        flow_id_used.write(hashes.reg_idx32, true);
     }
 
 
@@ -121,14 +132,17 @@ control DuneIngress(
         if (UNKNOWN_FLOW_CLASS == meta.flow_class) {
             ComputeHashes.apply(hashes, hdr, meta);
             CheckColision(hashes, hdr.dune);
+            UpdateUsedFlowIds(hashes);
             if (UNKNOWN_FLOW_CLASS != hdr.dune.flow_class) {
                 // Flow is known by a previous switch
                 // TODO
                 // Send digest and clear registers (in controller, no clear if collision)
                 digest<FlowDigest_t>(1, {});
             } else {
+                // Flow is not know by a previous switch
 
                 /* TODO */
+                // Apply model
 
                 //pkt_arrival_time = BMV2_TIME(std_meta.ingress_global_timestamp[31:0])
 
