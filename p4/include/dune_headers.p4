@@ -13,10 +13,13 @@
 
 #include "network_headers.p4"
 
-const bit<8> UNKNOWN_FLOW_CLASS = 0;
+type bit<8> Class_t;
+
+const Class_t UNKNOWN_FLOW_CLASS = 0;
 
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
+    Class_t flow_class;
     /* TODO */
 }
 
@@ -44,7 +47,7 @@ struct Metadata_t {
     bit<16> src_port;
     bit<16> dst_port;
 
-    bit<8> flow_class;
+    Class_t flow_class;
     /* TODO */
 }
 
