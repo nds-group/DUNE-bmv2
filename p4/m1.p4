@@ -147,6 +147,7 @@ struct VotingClasses_t {
 
 control InferenceModel(
     in Headers_t hdr,
+    in Metadata_t meta,
     in standard_metadata_t std_meta,
     in StatefullFeatures_t statefull_features,
     out Class_t class
@@ -255,10 +256,10 @@ control InferenceModel(
     }
  
     apply {
-        if (!hdr.udp.isValid()) {
-            features.udp_len = 0;
-        } else {
+        if (hdr.ipv4.protocol == IPv4Proto.UDP) {
             features.udp_len = hdr.udp.length;
+        } else {
+            features.udp_len = 0;
         }
         TableFeature0.apply();
         TableFeature1.apply();

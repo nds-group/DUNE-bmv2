@@ -60,6 +60,7 @@ control ResetFlowFeaturesIfInferencePointNotReached(
 
 control InferenceModel(
     in Headers_t hdr,
+    in Metadata_t meta,
     in standard_metadata_t std_meta,
     in StatefullFeatures_t statefull_features,
     out Class_t class

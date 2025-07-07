@@ -173,6 +173,7 @@ control DuneIngress(
                 );
                 InferenceModel.apply(
                     hdr,
+                    meta,
                     std_meta,
                     statefull_features,
                     class
