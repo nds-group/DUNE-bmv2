@@ -101,10 +101,10 @@ control CheckCollisionAndNewFlow(
 
 control GetPktCount(
     in Hash_t hashes,
-    out bit<8> pkt_count
+    out PktCount_t pkt_count
 )
 {
-    register<bit<8>>(NB_REG_ENTRIES) pkt_counts;
+    register<PktCount_t>(NB_REG_ENTRIES) pkt_counts;
     apply {
         pkt_counts.read(pkt_count, hashes.reg_idx32);
         pkt_count = pkt_count + 1;
@@ -135,8 +135,9 @@ control DuneIngress(
     Hash_t hashes;
 
     bool new_flow;
-    bit<8> pkt_count;
+    PktCount_t pkt_count;
     StatefullFeatures_t statefull_features;
+    Class_t class;
 
     apply {
         InsertDuneHeaderIfNotPresent();
@@ -153,18 +154,32 @@ control DuneIngress(
                 digest<FlowDigest_t>(1, {});
             } else {
                 // Flow is neither know by a previous switch nor locally
-                InitStatefullFeatures.apply(statefull_features);
                 if (!hdr.dune.collision) {
                     GetPktCount.apply(hashes, pkt_count);
+                    UpdateAndGetStatefullFeatures.apply(
+                        std_meta,
+                        hashes,
+                        pkt_count,
+                        new_flow,
+                        statefull_features
+                    );
                 } else {
                     pkt_count = 0;
+                    GetStatefullFeaturesDefaultValues.apply(statefull_features);
                 }
-                UpdateStatefullFeaturesIfInferencePointReached.apply(
+                ResetFlowFeaturesIfInferencePointNotReached.apply(
                     pkt_count,
-                    new_flow,
                     statefull_features
                 );
-                InferenceModel.apply();
+                InferenceModel.apply(
+                    hdr,
+                    std_meta,
+                    statefull_features,
+                    class
+                );
+                // TODO :
+                // Inform the switch if the class different from UKNOWN
+                digest<FlowDigest_t>((bit<32>)class, {});
             }
         } else {
             // Flow is already locally known

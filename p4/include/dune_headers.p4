@@ -13,7 +13,7 @@
 
 #include "network_headers.p4"
 
-type bit<8> Class_t;
+typedef bit<8> Class_t;
 
 const Class_t UNKNOWN_FLOW_CLASS = 0;
 
@@ -41,6 +41,10 @@ struct Headers_t {
 
 type bit<ID_BIT_WIDTH> FlowId_t;
 type bit<IDX_BIT_WIDTH> RegIdx_t;
+
+// Use typedef instead of type to for comparaisons without casting
+#define PKT_CNT_BIT_WIDTH 32
+typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
 #define NB_REG_ENTRIES (1 << IDX_BIT_WIDTH)
 
