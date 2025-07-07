@@ -31,4 +31,4 @@ dirs:
 clean: stop
 	rm -rf $(DIRS)
 
-.PHONY: all run debug run_switch build dirs stop clean
+.PHONY: all run stop build dirs clean

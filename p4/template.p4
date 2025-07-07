@@ -4,34 +4,36 @@
 // Warning : 
 // The following names :
 // - StatefullFeatures_t
-// - UpdateStatefullFeaturesIfInferencePointReached
-// - InitStatefullFeatures
+// - UpdateAndGetStatefullFeatures
+// - GetStatefullFeaturesDefaultValues
+// - ResetFlowFeaturesIfInferencePointNotReached
 // - InferenceModel
 // are shared with the ingress control block. They must be the same
 // or the compilation will fail.
 
+#include "include/dune_headers.p4"
+
 struct StatefullFeatures_t {
+    // TODO 
 }
 
-control UpdateStatefullFeaturesIfInferencePointReached(
-    in bit<8> pkt_count,
+control UpdateAndGetStatefullFeatures(
+    in standard_metadata_t std_meta,
+    in Hash_t hashes,
+    in PktCount_t pkt_count,
     in bool new_flow,
     inout StatefullFeatures_t statefull_features
 )
 {
-    const bit<8> inference_point = 3;
-
     apply {
-        if (pkt_count == inference_point) {
-            // TODO :
-            // really get and update the features
-            statefull_features = {
-            };
-        }
+        // TODO :
+        // really get and update the features
+        statefull_features = {
+        };
     }
 }
 
-control InitStatefullFeatures(
+control GetStatefullFeaturesDefaultValues(
     out StatefullFeatures_t statefull_features
 )
 {
@@ -41,7 +43,26 @@ control InitStatefullFeatures(
     }
 }
 
+control ResetFlowFeaturesIfInferencePointNotReached(
+    in PktCount_t pkt_count,
+    inout StatefullFeatures_t statefull_features
+)
+{
+    const PktCount_t inference_point = 0;
+
+    apply {
+        if (pkt_count < inference_point) {
+            statefull_features = {
+            };
+        }
+    }
+}
+
 control InferenceModel(
+    in Headers_t hdr,
+    in standard_metadata_t std_meta,
+    in StatefullFeatures_t statefull_features,
+    out Class_t class
 )
 {
     apply {
