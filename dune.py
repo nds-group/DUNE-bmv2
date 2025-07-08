@@ -51,23 +51,21 @@ class P4SimpleSwitchGRPC(Switch):
     sw_path = 'simple_switch_grpc'
     START_TIMEOUT = 10
 
-    def __init__(self, name, selected_model=None, config=None, **kwargs):
+    def __init__(self, name, selected_model=None, models=None, **kwargs):
         Switch.__init__(self, name, **kwargs)
-        print('*'*80)
-        print(name, selected_model)
         # TODO : handle no deployed model
         self.selected_model = selected_model
         assert self.selected_model
-        self.config = config
-        assert self.config
+        self.models = models
+        assert self.models
+        self.model_config = self.models[self.selected_model]
 
         self.sw_path = P4SimpleSwitchGRPC.sw_path
         assert self.sw_path
         pathCheck(self.sw_path)
 
 
-        selected_model_conf = self.config['models'][self.selected_model]
-        p4 = selected_model_conf['p4']
+        p4 = self.model_config['p4']
 
         self.sw_json = 'build/' + p4 + '.json'
         throw_if_not_readable(self.sw_json)
@@ -75,7 +73,7 @@ class P4SimpleSwitchGRPC(Switch):
         self.sw_p4info = 'build/' + p4 + '.p4.p4info.txtpb'
         throw_if_not_readable(self.sw_p4info)
 
-        self.models = [*map(lambda m: 'models/' + m, selected_model_conf['files'])]
+        self.models = [*map(lambda m: 'models/' + m, self.model_config['files'])]
         for path in self.models:
             throw_if_not_readable(path)
 
@@ -103,7 +101,7 @@ class P4SimpleSwitchGRPC(Switch):
                 self.grpc_port, 
                 self.thrift_port, 
                 self.device_id, 
-                self.config['models'][self.selected_model]['controller_class']
+                self.model_config['controller_class']
             )
 
         args = [self.sw_path]
@@ -220,9 +218,11 @@ class P4Controller(Controller):
         self.cmd(f'pkill -f "{self.command}"')
 
 class Dune():
-    def __init__(self, json_path):
-        self.config = None
-        self.loadJson(json_path)
+    def __init__(self, topo_json_path, models_json_path):
+        #self.config = None
+        self.topo = None
+        self.models = None
+        self.loadJsonFiles(topo_json_path, models_json_path)
         info('*** Creating network\n')
         self.net = Mininet(
                 host=P4Host,
@@ -233,18 +233,20 @@ class Dune():
             )
         self.configured = False
 
-    def loadJson(self,json_path):
-        with open(json_path, 'r') as f:
-            self.config = json.load(f)
+    def loadJsonFiles(self, topo_json_path, models_json_path):
+        with open(topo_json_path, 'r') as f:
+            self.topo = json.load(f)
+        with open(models_json_path, 'r') as f:
+            self.models = json.load(f)
 
     def assignModels(self):
         # Create graph of the network
         # TODO : move import
         import networkx as nx
         G = nx.Graph()
-        switches = self.config['switches']
-        hosts = self.config['hosts']
-        links = self.config['links']
+        switches = self.topo['switches']
+        hosts = self.topo['hosts']
+        links = self.topo['links']
         G.add_nodes_from(switches)
         G.add_nodes_from(hosts)
         G.add_edges_from(links)
@@ -262,7 +264,7 @@ class Dune():
             #nx.draw(G, with_labels=True)
             plt.show()
 
-        models = self.config['models']
+        models = self.models
         # TODO : move imports
         import pulp
         import itertools
@@ -298,7 +300,7 @@ class Dune():
         # Models in order
         for path in paths:
             for m in models:
-                prev = self.config['models'][m]['previous']
+                prev = self.models[m]['previous']
                 if prev is not None:
                     accumulator = [path[:i + 1] for i in range(len(path))]
                     for sws in accumulator:
@@ -322,7 +324,7 @@ class Dune():
 
     def configureFromJson(self):
         info('*** Adding controllers:\n')
-        for sw in self.config['switches']:
+        for sw in self.topo['switches']:
             name = f'c{sw[1:]}'
             info(name + ' ')
             c = self.net.addController(name)
@@ -330,22 +332,25 @@ class Dune():
         info('\n')
 
         info('*** Adding hosts:\n')
-        for host in self.config['hosts']:
+        for host in self.topo['hosts']:
             info(host + ' ')
             self.net.addHost(host)
         info('\n')
 
         info('*** Adding switches:\n')
-        for sw in self.config['switches']:
+        for sw in self.topo['switches']:
             info(sw + ' ')
-            self.net.addSwitch(sw, selected_model=switchToModelMap[sw], config=self.config)
+            print(type(switchToModelMap[sw]))
+            self.net.addSwitch(sw, selected_model=switchToModelMap[sw], models=self.models)
         info('\n')
 
         info('*** Adding links:\n')
-        for link in self.config['links']:
+        for link in self.topo['links']:
             info(f'({link[0]}, {link[1]}) ')
             intfs = self.net.addLink(link[0], link[1])
             # Jumbo frame support 
+            # TODO ?
+            # Custom class for links with jumbo frame ?
             self.net.get(link[0]).cmd(f'ip link set dev {intfs.intf1} mtu 9000')
             self.net.get(link[1]).cmd(f'ip link set dev {intfs.intf2} mtu 9000')
         info('\n')
@@ -367,8 +372,8 @@ def main():
 
     #path = input('Path for the topology file: ')
     #dune = Dune(path)
-    dune = Dune('topo_simple.json')
-    #dune = Dune('topo.json')
+    dune = Dune('topo_simple.json', 'models.json')
+    #dune = Dune('topo.json', 'models.json')
 
     # TODO : move next line and add checks
     dune.assignModels()
