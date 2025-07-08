@@ -367,7 +367,7 @@ def main():
 
     #path = input('Path for the topology file: ')
     #dune = Dune(path)
-    dune = Dune('topo_simple.json')
+    dune = Dune('topo_no_populate.json')
     #dune = Dune('topo.json')
 
     # TODO : move next line and add checks
