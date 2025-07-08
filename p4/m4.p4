@@ -149,7 +149,7 @@ control InferenceModel(
     action SetClass1ToUnknown() {
         class = UNKNOWN_FLOW_CLASS;
     }
-	table code_table1{
+	table CodeTable1{
         key = {
             codewords.codeword1_0: ternary;
             codewords.codeword1_1: ternary;
@@ -190,7 +190,7 @@ control InferenceModel(
         TableFeature9.apply();
         TableFeature10.apply();
 
-        code_table1.apply();
+        CodeTable1.apply();
     }
 }
 
