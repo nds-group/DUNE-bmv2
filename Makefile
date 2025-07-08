@@ -4,11 +4,15 @@ LOG_DIR = logs
 DIRS = $(BUILD_DIR) $(PCAP_DIR) $(LOG_DIR)
 
 P4C = p4c-bm2-ss
+
 SOURCES_DIR = p4
 SOURCES = $(wildcard $(SOURCES_DIR)/*.p4)
 TARGETS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(BUILD_DIR)/%.json)
 
-all: run
+INCLUDE_DIR = $(SOURCES_DIR)/include
+INCLUDES := $(wildcard $(INCLUDE_DIR)/*.p4)
+
+all: build
 
 run: build
 	sudo PATH="$(PATH)" python3 dune.py
@@ -18,7 +22,7 @@ stop:
 
 build: dirs $(TARGETS)
 
-$(BUILD_DIR)/%.json: $(SOURCES_DIR)/%.p4
+$(BUILD_DIR)/%.json: $(SOURCES_DIR)/%.p4 $(INCLUDES)
 	$(P4C) \
 		--p4v 16 \
 		--p4runtime-files $(basename $@).p4.p4info.txtpb \
