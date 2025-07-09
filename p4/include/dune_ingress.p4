@@ -94,6 +94,7 @@ control CheckCollisionAndNewFlow(
         } else {
             dune.collision = false;
             new_flow = true;
+            flow_ids.write(hashes.reg_idx32, hashes.flow_id);
         }
         UpdateUsedFlowIds();
     }
