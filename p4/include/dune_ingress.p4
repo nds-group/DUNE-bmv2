@@ -138,8 +138,14 @@ control DuneIngress(
     PktCount_t pkt_count;
     StatefullFeatures_t statefull_features;
     Class_t class;
+    InferencePointStatus_t inference_point_status;
 
     apply {
+        // Because rejected packets are not automatically droped on Bmv2
+        if (std_meta.parser_error != error.NoError) {
+            mark_to_drop(std_meta);
+            exit;
+        }
         InsertDuneHeaderIfNotPresent();
         // Check if flow is known and populate meta.flow_class
         IsFlowClassKnownLocally.apply(hdr, meta);
