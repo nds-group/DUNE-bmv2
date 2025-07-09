@@ -106,7 +106,6 @@ control GetStatefullFeaturesDefaultValues(
     } 
 }
 
-
 control ResetFlowFeaturesIfInferencePointNotReached(
     in PktCount_t pkt_count,
     inout StatefullFeatures_t statefull_features,

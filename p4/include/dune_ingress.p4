@@ -159,7 +159,6 @@ control DuneIngress(
                 // TODO
                 // Can't remember what to do when colision is this specific case
                 // Send digest and clear registers (in controller, no clear if collision)
-                //digest<FlowDigest_t>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.src_port, meta.dst_port, hdr.ipv4.protocol, hdr.dune.flow_class, hashes.reg_idx});
                 digest<FlowDigest_t>(1, {
                     hdr.ipv4.src_addr,
                     hdr.ipv4.dst_addr,

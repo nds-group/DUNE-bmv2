@@ -53,8 +53,6 @@ class P4SimpleSwitchGRPC(Switch):
 
     def __init__(self, name, selected_model=None, config=None, **kwargs):
         Switch.__init__(self, name, **kwargs)
-        print('*'*80)
-        print(name, selected_model)
         # TODO : handle no deployed model
         self.selected_model = selected_model
         assert self.selected_model

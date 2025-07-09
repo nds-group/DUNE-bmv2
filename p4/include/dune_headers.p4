@@ -17,11 +17,15 @@ typedef bit<8> Class_t;
 
 const Class_t UNKNOWN_FLOW_CLASS = 0;
 
+// Use typedef instead of type to for comparaisons without casting
+#define PKT_CNT_BIT_WIDTH 32
+typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
+
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
     Class_t flow_class;
     bool collision;
-    bit<8> pkt_count; // TODO : make bigger than 8 ? or remove ?
+    PktCount_t pkt_count;
     /* TODO : */
     // Forwarding
     bit<7> _padding_;
@@ -41,10 +45,6 @@ struct Headers_t {
 
 typedef bit<ID_BIT_WIDTH> FlowId_t;
 typedef bit<IDX_BIT_WIDTH> RegIdx_t;
-
-// Use typedef instead of type to for comparaisons without casting
-#define PKT_CNT_BIT_WIDTH 32
-typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
 #define NB_REG_ENTRIES (1 << IDX_BIT_WIDTH)
 
@@ -72,7 +72,6 @@ struct FlowDigest_t {
     IPv4Protocol protocol;
     Class_t flow_class;
     RegIdx_t register_index;
-    // TODO ? Finnished ?
 }
 
 // The Bmv2 uses timestamps in microseconds whereas Tofino uses nanoseconds.
