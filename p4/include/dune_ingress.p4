@@ -188,6 +188,10 @@ control DuneIngress(
             // TODO
             // Use local info to populate dune header
         }
+
+        // TODO :
+        // Do the forwarding
+        std_meta.egress_spec = 2;
     }
 }
 
