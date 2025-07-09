@@ -140,6 +140,7 @@ control DuneIngress(
     StatefullFeatures_t statefull_features;
     Class_t class;
     InferencePointStatus_t inference_point_status;
+    register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
 
     apply {
         // Because rejected packets are not automatically droped on Bmv2
@@ -184,18 +185,17 @@ control DuneIngress(
                     GetStatefullFeaturesDefaultValues.apply(statefull_features);
                 }
                 // TODO MAYBE :
-                // Slit in two functions :
-                // - GetInferencePointStatus
-                // - GetDefaultFlowFeaturesValues
+                // Split  :
+                // - GetInferencePoint (in model file)
+                // - GetInferencePointStatus (here)
+                // - GetDefaultFlowFeaturesValues (move reset logic to ingress)
                 ResetFlowFeaturesIfInferencePointNotReached.apply(
                     pkt_count,
                     statefull_features,
                     inference_point_status
                 );
                 if (inference_point_status == InferencePointStatus_t.AFTER_INFERENCE_POINT) {
-                    // TODO :
-                    // Read res from register
-                    class = 0;
+                    FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
                 } else {
                     InferenceModel.apply(
                         hdr,
@@ -218,8 +218,6 @@ control DuneIngress(
                         class,
                         hashes.reg_idx
                     });
-                    // TODO :
-                    // Write res to register
                 }
             }
         } else {

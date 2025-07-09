@@ -119,7 +119,7 @@ control ResetFlowFeaturesIfInferencePointNotReached(
         if (pkt_count < inference_point) {
             inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
             GetStatefullFeaturesDefaultValues.apply(statefull_features);
-        } else if (pkt_count < inference_point) {
+        } else if (pkt_count > inference_point) {
             inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
         } else {
             inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
