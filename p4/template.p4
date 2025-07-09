@@ -45,15 +45,20 @@ control GetStatefullFeaturesDefaultValues(
 
 control ResetFlowFeaturesIfInferencePointNotReached(
     in PktCount_t pkt_count,
-    inout StatefullFeatures_t statefull_features
+    inout StatefullFeatures_t statefull_features,
+    out InferencePointStatus_t inference_point_status
 )
 {
     const PktCount_t inference_point = 0;
 
     apply {
         if (pkt_count < inference_point) {
-            statefull_features = {
-            };
+            inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
+            GetStatefullFeaturesDefaultValues.apply(statefull_features);
+        } else if (pkt_count < inference_point) {
+            inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
+        } else {
+            inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
         }
     }
 }

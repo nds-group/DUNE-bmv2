@@ -158,7 +158,16 @@ control DuneIngress(
                 // TODO
                 // Can't remember what to do when colision is this specific case
                 // Send digest and clear registers (in controller, no clear if collision)
-                digest<FlowDigest_t>(1, {});
+                //digest<FlowDigest_t>(1, {hdr.ipv4.src_addr, hdr.ipv4.dst_addr, meta.src_port, meta.dst_port, hdr.ipv4.protocol, hdr.dune.flow_class, hashes.reg_idx});
+                digest<FlowDigest_t>(1, {
+                    hdr.ipv4.src_addr,
+                    hdr.ipv4.dst_addr,
+                    meta.src_port,
+                    meta.dst_port,
+                    hdr.ipv4.protocol,
+                    hdr.dune.flow_class,
+                    hashes.reg_idx
+                });
             } else {
                 // Flow is neither know by a previous switch nor locally
                 if (!hdr.dune.collision) {
@@ -174,20 +183,44 @@ control DuneIngress(
                     pkt_count = 0;
                     GetStatefullFeaturesDefaultValues.apply(statefull_features);
                 }
+                // TODO MAYBE :
+                // Slit in two functions :
+                // - GetInferencePointStatus
+                // - GetDefaultFlowFeaturesValues
                 ResetFlowFeaturesIfInferencePointNotReached.apply(
                     pkt_count,
-                    statefull_features
-                );
-                InferenceModel.apply(
-                    hdr,
-                    meta,
-                    std_meta,
                     statefull_features,
-                    class
+                    inference_point_status
                 );
+                if (inference_point_status == InferencePointStatus_t.AFTER_INFERENCE_POINT) {
+                    // TODO :
+                    // Read res from register
+                    class = 0;
+                } else {
+                    InferenceModel.apply(
+                        hdr,
+                        meta,
+                        std_meta,
+                        statefull_features,
+                        class
+                    );
+                }
                 // TODO :
                 // Inform the switch if the class different from UKNOWN
-                digest<FlowDigest_t>((bit<32>)class, {});
+                // Also, populate DUNE header
+                if (inference_point_status == InferencePointStatus_t.AT_INFERENCE_POINT) {
+                    digest<FlowDigest_t>(2, {
+                        hdr.ipv4.src_addr,
+                        hdr.ipv4.dst_addr,
+                        meta.src_port,
+                        meta.dst_port,
+                        hdr.ipv4.protocol,
+                        class,
+                        hashes.reg_idx
+                    });
+                    // TODO :
+                    // Write res to register
+                }
             }
         } else {
             // Flow is already locally known

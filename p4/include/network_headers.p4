@@ -22,7 +22,8 @@ header Ethernet_h {
 
 typedef bit<32> IPv4Address;
 
-enum bit<8> IPv4Proto {
+typedef bit<8> IPv4Protocol;
+enum IPv4Protocol IPv4Proto {
     TCP = 0x06,
     UDP = 0x11
 }
@@ -37,7 +38,7 @@ header IPv4_h {
     bit<3> flags;
     bit<13> fragment_offset;
     bit<8> ttl;
-    IPv4Proto protocol;
+    IPv4Protocol protocol;
     bit<16> hdr_checksum;
     IPv4Address src_addr;
     IPv4Address dst_addr;

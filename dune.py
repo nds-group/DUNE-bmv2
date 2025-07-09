@@ -203,7 +203,6 @@ class P4Controller(Controller):
         self.is_config = True
 
         args = ['python', 'controller.py']
-        args += ['--output', f'logs/{self.name}.csv']
         args += ['--grpc-port', str(self.grpc_port)] 
         args += ['--thrift-port', str(self.thrift_port)] 
         args += ['--device-id', str(self.device_id)] 
@@ -214,7 +213,7 @@ class P4Controller(Controller):
     # Prevent automatic start, the associated switch needs to start first
     def start(self):
         if self.is_config:
-            self.cmd(self.command + f' 2>&1 &')
+            self.cmd(self.command + f' > logs/{self.name}.log 2>&1 &')
 
     def stop(self):
         self.cmd(f'pkill -f "{self.command}"')
