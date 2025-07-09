@@ -212,10 +212,12 @@ class P4Controller(Controller):
     # Prevent automatic start, the associated switch needs to start first
     def start(self):
         if self.is_config:
-            self.cmd(self.command + f' 2>&1 &')
+            pass
+            # self.cmd(self.command + f' 2>&1 &')
 
     def stop(self):
-        self.cmd(f'pkill -f "{self.command}"')
+        pass
+        # self.cmd(f'pkill -f "{self.command}"')
 
 class Dune():
     def __init__(self, topo_json_path, models_json_path):
@@ -282,7 +284,7 @@ class Dune():
         prob += pulp.lpSum(X)
 
         # Creating paths
-        pairs = itertools.permutations(hosts, 2)
+        pairs = itertools.combinations(hosts, 2)
         paths = []
         for p1, p2 in pairs:
             for path in nx.all_simple_paths(G, p1, p2):
@@ -372,8 +374,7 @@ def main():
 
     #path = input('Path for the topology file: ')
     #dune = Dune(path)
-    dune = Dune('topo_simple.json', 'models.json')
-    #dune = Dune('topo.json', 'models.json')
+    dune = Dune('topo.json', 'models.json')
 
     # TODO : move next line and add checks
     dune.assignModels()
