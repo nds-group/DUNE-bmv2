@@ -9,13 +9,18 @@ import queue
 import threading
 import signal
 
+from logger import thread_entry, setup_thread_logger, get_global_logger
+
+# Main thread logger
+logger = get_global_logger()
+logger.info("Starting P4Runtime client")
 
 # Global flag to exit cleanly
 running = True
 
 def signal_handler(sig, frame):
     global running
-    print("\nReceived SIGINT, exiting gracefully...")
+    logger.info("\nReceived SIGINT, exiting gracefully...")
     running = False
 
 # Register SIGINT handler
@@ -50,7 +55,7 @@ def connect_to_switch(address='127.0.0.1:50051', device_id=0):
     # Wait for arbitration response
     response = next(stream)
     assert response.HasField("arbitration")
-    print("Connected to switch with device_id =", device_id)
+    logger.info("Connected to switch with device_id = %s", device_id)
 
     # Return the stub, the stream, and the request queue to send more messages later
     return stub, stream, q
@@ -75,7 +80,7 @@ def set_pipeline_config(stub, device_id, election_id, p4info_path, bmv2_json_pat
 
     # Send the request
     stub.SetForwardingPipelineConfig(request)
-    print(f"Pipeline config set for device {device_id}")
+    logger.info(f"Pipeline config set for device {device_id}")
 
     return p4info
 
@@ -99,7 +104,7 @@ def read_register(stub, device_id, p4info, register_name, index):
         for entity in response.entities:
             if entity.HasField("register_entry"):
                 data = entity.register_entry.data
-                print(f"Register {register_name}[{index}] = {int.from_bytes(data, 'big')}")
+                logger.info(f"Register {register_name}[{index}] = {int.from_bytes(data, 'big')}")
 
 def write_register(stub, device_id, p4info, register_name, index, value):
     register_id = get_register_id(p4info, register_name)
@@ -119,7 +124,7 @@ def write_register(stub, device_id, p4info, register_name, index, value):
     request.updates.extend([update])
 
     stub.Write(request)
-    print(f"Register {register_name}[{index}] <- {value}")
+    logger.info(f"Register {register_name}[{index}] <- {value}")
 
 
 def get_register_id(p4info, register_name):
@@ -154,8 +159,8 @@ def build_digest_field_map(p4info, digest_name):
     raise ValueError(f"Digest '{digest_name}' not found in P4Info.")
 
 
-def listen_for_digests(stream, digest_name, field_list, request_queue, device_id):
-    print(f"Listening for digest messages: {digest_name}")
+def listen_for_digests(stream, digest_name, field_list, request_queue, device_id, logger):
+    logger.info(f"Listening for digest messages: {digest_name}")
     logfile = open(f"./logs/s{device_id}_digests.log", "w")
     while running:
         try:
@@ -163,31 +168,31 @@ def listen_for_digests(stream, digest_name, field_list, request_queue, device_id
         except StopIteration:
             break
         except Exception as e:
-            print(f"[!] Error receiving stream message: {e}", file=logfile, flush=True)
+            logger.info(f"[!] Error receiving stream message: {e}")
             break
 
         if response.HasField("digest"):
             digest = response.digest
-            print(f"\n[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}", file=logfile, flush=True)
+            logger.info(f"\n[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
 
             for entry in digest.data:
-                print("  Digest entry:", file=logfile, flush=True)
+                logger.info("  Digest entry:")
                 for i, member in enumerate(entry.struct.members):
                     if i < len(field_list):
                         name, bitwidth = field_list[i]
                         value = int.from_bytes(member.bitstring)
-                        print(f"    {name:<15} = {value}", file=logfile, flush=True)
+                        logger.info(f"    {name:<15} = {value}")
                     else:
-                        print(f"    Unknown member (too many): {member}", file=logfile, flush=True)
+                        logger.warning(f"    Unknown member (too many): {member}")
 
             # Send digest acknowledgment
             ack = p4runtime_pb2.StreamMessageRequest()
             ack.digest_ack.digest_id = digest.digest_id
             ack.digest_ack.list_id = digest.list_id
             request_queue.put(ack)
-            print("  [✓] Sent digest_ack\n", file=logfile, flush=True)
+            logger.info("  [✓] Sent digest_ack\n")
         else:
-            print("Other message:", response, file=logfile, flush=True)
+            logger.info("Other message:", response)
     logfile.close()
 
 
@@ -229,14 +234,14 @@ if __name__ == '__main__':
 
     # Start listener for each switch
     for name, sw in switches.items():
-        print(f"Starting thread for {name}...")
+        logger.info(f"Starting thread for {name}...")
         
-        listener_thread = threading.Thread(
-            target=listen_for_digests,
-            args=(sw.stream, digest_name, sw.field_list, sw.queue, sw.device_id),
+        controller_thread = threading.Thread(
+            target=thread_entry,
+            args=(listen_for_digests, f'c{sw.device_id}', sw.stream, digest_name, sw.field_list, sw.queue, sw.device_id),
             daemon=True
         )
-        listener_thread.start()
+        controller_thread.start()
 
     # Keep the main thread alive until SIGINT
     try:
@@ -245,4 +250,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
 
-    print("Controller exiting.")
+    logger.info("Controller exiting.")
