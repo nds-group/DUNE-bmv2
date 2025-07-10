@@ -7,6 +7,7 @@ import os.path
 import psutil
 import tempfile
 import time
+import multiprocessing
 
 
 def assertIsFile(path):
@@ -142,8 +143,21 @@ class P4SimpleSwitchGRPC(Switch):
     # Using batchStartup to program the switches in parallel
     @classmethod
     def batchStartup(cls, switches):
-        print('Switch batchStartup')
-        #TODO
+        processes = []
+        for sw in switches:
+            ps = multiprocessing.Process(
+                    target=cls.populate_tables,
+                    args=[sw]
+                )
+            processes.append(ps)
+            ps.start()
+        try:
+            for ps in processes:
+                ps.join()
+        except KeyboardInterrupt:
+            for ps in processes:
+                ps.terminate()
+            raise KeyboardInterrupt
         return switches
 
     # TODO (MAYBE ?)
@@ -156,10 +170,18 @@ class P4SimpleSwitchGRPC(Switch):
         return True
 
     def populate_tables(sw):
-        #TODO 
-        # Maybe use the connected function to notify the controller at the end of popul...
-        pass
+        args = ['python', 'convert_RF_and_populate_tables.py']
+        args += ['--p4info', sw.sw_p4info]
+        args += ['--json', sw.sw_json]
+        args += ['--grpc-port', str(sw.grpc_port)]
+        args += ['--device-id', str(sw.device_id)]
+        args += ['--models'] + sw.models
 
+        log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
+        args += ['>', log_file, '2>&1']
+
+        populate_cmd = ' '.join(args)
+        sw.cmd(populate_cmd)
 
 switches = { 'p4simpleswitchgrpc' : P4SimpleSwitchGRPC }
 

@@ -28,7 +28,7 @@ P4_FLAGS_DEPS = -MD -MP -MT $(OBJECTS_DIR)/$*.json -MF $(OBJECTS_DIR)/$*.d
 
 
 
-MN := sudo `which mn`
+MN := sudo PATH="$(PATH)" `which mn`
 
 MN_DIR := ./mininet
 
