@@ -9,16 +9,6 @@
     "links": [
         ["h1", "s1"],
         ["s1", "h2"]
-    ],
-    "models": {
-        "m1": {
-            "p4": "m1",
-            "files": [
-                "FINAL_unsw_ClID2_N3_T3_F3_L41_With_Others.sav"
-            ],
-            "controller_class": 19,
-            "previous": null
-        }
-    }
+    ]
 }
 

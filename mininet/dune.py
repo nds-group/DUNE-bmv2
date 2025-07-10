@@ -6,7 +6,6 @@ import networkx as nx
 import pulp
 import itertools
 
-
 def assertIsFile(path):
     assert isfile(path), path + ' was not found or is a directory'
 
@@ -51,7 +50,7 @@ class Dune(Topo):
         # Integrity constraints :
         # For each path, one of each model must appear in a switch in the path
         for path in paths:
-            for m in self.topo['models']:
+            for m in self.models:
                 expr = pulp.LpAffineExpression()
                 for sw in path:
                     expr.addInPlace(X[sw][m], 1)
@@ -75,6 +74,7 @@ class Dune(Topo):
         ilp.solve()
         assert ilp.status == pulp.constants.LpStatusOptimal, 'ILP could not find a solution'
         self.model_assignment = {}
+        #TODO log the results
         for sw in self.topo['switches']:
             self.model_assignment[sw] = None
             for m in self.models:
@@ -82,16 +82,18 @@ class Dune(Topo):
                     assert self.model_assignment[sw] is None, 'A switch received more than one model'
                     self.model_assignment[sw] = self.models[m]
 
-    def build(self, topo, models, models_dir, log_dir, pcap_dir):
+    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir):
         assertIsFile(topo)
         assertIsFile(models)
         assertIsDir(models_dir)
+        assertIsDir(objects_dir)
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
         self.topo = loadJsonFile(topo)
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
+        self.objects_dir = objects_dir
         self.log_dir = log_dir
         self.pcap_dir = pcap_dir
 
@@ -104,6 +106,7 @@ class Dune(Topo):
                     sw,
                     model_config=self.model_assignment[sw],
                     model_dir=self.models_dir,
+                    objects_dir=self.objects_dir,
                     log_dir=self.log_dir,
                     pcap_dir=self.pcap_dir
                 )
