@@ -67,10 +67,12 @@ class P4SimpleSwitchGRPC(Switch):
         selected_model_conf = self.config['models'][self.selected_model]
         p4 = selected_model_conf['p4']
 
-        self.sw_json = 'build/' + p4 + '.json'
+        # TODO :
+        # Get p4objects dir as a parameter
+        self.sw_json = 'p4objects/' + p4 + '.json'
         throw_if_not_readable(self.sw_json)
         
-        self.sw_p4info = 'build/' + p4 + '.p4.p4info.txtpb'
+        self.sw_p4info = 'p4objects/' + p4 + '.p4.p4info.txtpb'
         throw_if_not_readable(self.sw_p4info)
 
         self.models = [*map(lambda m: 'models/' + m, selected_model_conf['files'])]
