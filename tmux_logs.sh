@@ -13,11 +13,11 @@ fi
 ACTION="${ACTION} -n dune-logs"
 
 tmux ${ACTION} "tail -f logs/s1.log" &&
-tmux split-window -h "tail -f logs/c1.csv" &&
+tmux split-window -h "tail -f logs/c1.log" &&
 tmux split-window -h "tail -f logs/s2.log" &&
-tmux split-window -h "tail -f logs/c2.csv" &&
+tmux split-window -h "tail -f logs/c2.log" &&
 tmux split-window -h "tail -f logs/s3.log" &&
-tmux split-window -h "tail -f logs/c3.csv" &&
+tmux split-window -h "tail -f logs/c3.log" &&
 
 tmux setw -g mouse on &&
 tmux select-layout tiled
