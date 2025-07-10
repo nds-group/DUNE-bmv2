@@ -1,8 +1,13 @@
 import grpc
+import json
 from p4.v1 import p4runtime_pb2
 from p4.v1 import p4runtime_pb2_grpc
 from p4.config.v1 import p4info_pb2
 from google.protobuf import text_format
+
+import bmpy_utils as bm
+from bm_runtime.standard.Standard import Client
+
 from collections import namedtuple
 import time
 import queue
@@ -17,6 +22,35 @@ logger.info("Starting P4Runtime client")
 
 # Global flag to exit cleanly
 running = True
+
+Switch = namedtuple('Switch', 
+                    [
+                        'stub',
+                        'stream',
+                        'device_id',
+                        'queue',
+                        'p4info',
+                        'field_list',
+                        'thrift_client',
+                        'registers'
+                    ]
+                   )
+
+DuneDigest = namedtuple('DuneDigest',
+                        [
+                            'source_addr',
+                            'destin_addr',
+                            'source_port',
+                            'destin_por',
+                            'protocol',
+                            'class_val',
+                            'packet_n',
+                            'register_index',
+                            'is_refre',
+                            'is_store',
+                            'is_flow',
+                        ]
+                       )
 
 def signal_handler(sig, frame):
     global running
@@ -158,10 +192,64 @@ def build_digest_field_map(p4info, digest_name):
             return field_list
     raise ValueError(f"Digest '{digest_name}' not found in P4Info.")
 
+def get_registers_from_switch(thrift_client):
+    config = json.loads(thrift_client.bm_get_config())
 
-def listen_for_digests(stream, digest_name, field_list, request_queue, device_id, logger):
+    registers = []
+    for register_array in config["register_arrays"]:
+        registers.append(register_array["name"])
+    return registers
+
+def get_DuneDigest(entry, field_list, logger):
+    logger.debug("  Digest entry:")
+    dune_digest = {}
+    for i, member in enumerate(entry.struct.members):
+        if i < len(field_list):
+            name, bitwidth = field_list[i]
+            value = int.from_bytes(member.bitstring)
+            dune_digest[name] = value
+            logger.debug(f"    {name:<15} = {value}")
+        else:
+            logger.debug(f"    Unknown member (too many): {member}")
+
+    return DuneDigest(**dune_digest)
+
+
+def send_digest_ack(digest_id, list_id, request_queue):
+    ack = p4runtime_pb2.StreamMessageRequest()                                                                                                                                                                                                      
+    ack.digest_ack.digest_id = digest_id                                                                                                                                                                                                     
+    ack.digest_ack.list_id = list_id                                                                                                                                                                                                         
+    request_queue.put(ack)  
+
+
+def handle_dune_digest(dune_digest, sw):
+    if dune_digest.is_refresh == 1:
+        match_key = [("hdr.ipv4.src_addr", str(dune_digest.source_addr)),
+                     ("hdr.ipv4.dst_addr", str(dune_digest.destin_addr)),
+                     ("meta.hdr_srcport", str(dune_digest.source_port)),
+                     ("meta.hdr_dstport", str(dune_digest.destin_port)),
+                     ("hdr.ipv4.protocol", str(dune_digest.protocol))]
+        action_params = ["0"]
+        sw.grpc_client.table_add(
+                "MyIngress.flow_action_table",
+                "MyIngress.set_flow_action",
+                match_key=match_key,
+                action_params=action_params,
+                priority=0
+        )
+
+        for register in sw.registers:
+            thrift_client.bm_register_write(0, register, dune_digest.register_index, 0)
+
+
+def listen_for_digests(digest_name, sw, logger):
     logger.info(f"Listening for digest messages: {digest_name}")
-    logfile = open(f"./logs/s{device_id}_digests.log", "w")
+    stream = sw.stream
+    request_queue = sw.queue
+    device_id = sw.device_id
+    field_list = sw.field_list
+    thrift_client = sw.thrift_client
+
     while running:
         try:
             response = next(stream)
@@ -175,59 +263,69 @@ def listen_for_digests(stream, digest_name, field_list, request_queue, device_id
             digest = response.digest
             logger.info(f"\n[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
 
+            # TODO: refactor into a function
             for entry in digest.data:
-                logger.info("  Digest entry:")
-                for i, member in enumerate(entry.struct.members):
-                    if i < len(field_list):
-                        name, bitwidth = field_list[i]
-                        value = int.from_bytes(member.bitstring)
-                        logger.info(f"    {name:<15} = {value}")
-                    else:
-                        logger.warning(f"    Unknown member (too many): {member}")
+                dune_digest = get_DuneDigest(entry, field_list, logger)
+                handle_dune_digest(dune_digest, sw)
+                logger.info(f"  [✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
+                logger.debug("      Digest Content: %s", dune_digest)
 
-            # Send digest acknowledgment
-            ack = p4runtime_pb2.StreamMessageRequest()
-            ack.digest_ack.digest_id = digest.digest_id
-            ack.digest_ack.list_id = digest.list_id
-            request_queue.put(ack)
+            send_digest_ack(digest_id=digest.digest_id, list_id=digest.list_id, request_queue=request_queue)
             logger.info("  [✓] Sent digest_ack\n")
+
+            # TODO: write to csv file
+            # csv_src_addr = (dune_digest.ipaddress.IPv4Address(source_addr))
+            # csv_dst_addr = (dune_digest.ipaddress.IPv4Address(destin_addr))
+            # csv_row = f"{csv_src_addr},{csv_dst_addr},{source_port},{destin_port},{protocol},{pkt_count},{is_flow}"
+            # if is_store == 1:
+            #     if flow_packet_class == classe:
+            #         csv_row = f"{csv_row},{32}"
+            #     else:
+            #         csv_row = f"{csv_row},{flow_packet_class}"
+            # else:
+            #     csv_row = f"{csv_row},{55}"
+            # print(csv_row, file=output)
+
+
         else:
             logger.info("Other message:", response)
-    logfile.close()
+
+
 
 
 if __name__ == '__main__':
     devices = {
-            "s1": {"address": "127.0.0.1:50051", "device_id": 1},
-            "s2": {"address": "127.0.0.1:50052", "device_id": 2},
-            "s3": {"address": "127.0.0.1:50053", "device_id": 3},
+        "s1": {"address": "127.0.0.1", "grpc_port": 50051, "thrift_port": 9091, "device_id": 1},
+        "s2": {"address": "127.0.0.1", "grpc_port": 50052, "thrift_port": 9092, "device_id": 2},
+        "s3": {"address": "127.0.0.1", "grpc_port": 50053, "thrift_port": 9093, "device_id": 3},
     }
     digest_name = "flow_class_digest"
 
-    Switch = namedtuple('Switch', 
-                        [
-                            'stub',
-                            'stream',
-                            'device_id',
-                            'queue',
-                            'p4info',
-                            'field_list'
-                        ]
-            )
     switches = {}
 
     # Connect to all switches
     for name, info in devices.items():
-        stub, stream, q = connect_to_switch(address=info["address"], device_id=info["device_id"])
+        stub, stream, q = connect_to_switch(address=f'{info["address"]}:{info["grpc_port"]}', device_id=info["device_id"])
         p4info = get_p4info(stub, device_id=info["device_id"])
         field_list = build_digest_field_map(p4info, digest_name)
+
+        # Thrift connection to the switch
+        # (because registers not implemented in GRPC)
+        thrift_client: Client = bm.thrift_connect_standard(
+            thrift_ip=info["address"],
+            thrift_port=info["thrift_port"],
+        )
+        registers = get_registers_from_switch(thrift_client)
+
         sw = Switch(stub,
                     p4info=p4info,
                     stream=stream,
                     device_id=info["device_id"],
                     queue=q,
-                    field_list=field_list
-            )
+                    field_list=field_list,
+                    thrift_client=thrift_client,
+                    registers=registers
+             )
         switches[name] = sw
 
     # Build field map from P4Info
@@ -238,7 +336,7 @@ if __name__ == '__main__':
         
         controller_thread = threading.Thread(
             target=thread_entry,
-            args=(listen_for_digests, f'c{sw.device_id}', sw.stream, digest_name, sw.field_list, sw.queue, sw.device_id),
+            args=(listen_for_digests, f'c{sw.device_id}', digest_name, sw),
             daemon=True
         )
         controller_thread.start()
