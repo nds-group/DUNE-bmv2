@@ -2,11 +2,9 @@ import grpc
 import json
 from p4.v1 import p4runtime_pb2
 from p4.v1 import p4runtime_pb2_grpc
-from p4.config.v1 import p4info_pb2
-from google.protobuf import text_format
 
 import bmpy_utils as bm
-from bm_runtime.standard.Standard import Client
+from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions
 
 from collections import namedtuple
 import time
@@ -38,19 +36,16 @@ Switch = namedtuple('Switch',
 
 DuneDigest = namedtuple('DuneDigest',
                         [
-                            'source_addr',
-                            'destin_addr',
-                            'source_port',
-                            'destin_por',
+                            'src_addr',
+                            'dst_addr',
+                            'src_port',
+                            'dst_port',
                             'protocol',
-                            'class_val',
-                            'packet_n',
+                            'flow_class',
                             'register_index',
-                            'is_refre',
-                            'is_store',
-                            'is_flow',
                         ]
                        )
+
 
 def signal_handler(sig, frame):
     global running
@@ -94,29 +89,6 @@ def connect_to_switch(address='127.0.0.1:50051', device_id=0):
     # Return the stub, the stream, and the request queue to send more messages later
     return stub, stream, q
 
-def set_pipeline_config(stub, device_id, election_id, p4info_path, bmv2_json_path):
-    # Load P4Info
-    p4info = p4info_pb2.P4Info()
-    with open(p4info_path, 'r') as f:
-        text_format.Merge(f.read(), p4info)
-
-    # Load BMv2 JSON
-    with open(bmv2_json_path, 'rb') as f:
-        bmv2_json_bytes = f.read()
-
-    # Create request
-    request = p4runtime_pb2.SetForwardingPipelineConfigRequest()
-    request.device_id = device_id
-    request.election_id.CopyFrom(election_id)
-    request.action = p4runtime_pb2.SetForwardingPipelineConfigRequest.VERIFY_AND_COMMIT
-    request.config.p4info.CopyFrom(p4info)
-    request.config.p4_device_config = bmv2_json_bytes
-
-    # Send the request
-    stub.SetForwardingPipelineConfig(request)
-    logger.info(f"Pipeline config set for device {device_id}")
-
-    return p4info
 
 def get_p4info(stub, device_id=0):
     req = p4runtime_pb2.GetForwardingPipelineConfigRequest()
@@ -125,47 +97,6 @@ def get_p4info(stub, device_id=0):
     resp = stub.GetForwardingPipelineConfig(req)
     return resp.config.p4info
 
-def read_register(stub, device_id, p4info, register_name, index):
-    register_id = get_register_id(p4info, register_name)
-    entity = p4runtime_pb2.Entity()
-    entity.register_entry.register_id = register_id
-    entity.register_entry.index.index = index
-
-    request = p4runtime_pb2.ReadRequest(device_id=device_id)
-    request.entities.append(entity)
-
-    for response in stub.Read(request):
-        for entity in response.entities:
-            if entity.HasField("register_entry"):
-                data = entity.register_entry.data
-                logger.info(f"Register {register_name}[{index}] = {int.from_bytes(data, 'big')}")
-
-def write_register(stub, device_id, p4info, register_name, index, value):
-    register_id = get_register_id(p4info, register_name)
-    
-    entry = p4runtime_pb2.RegisterEntry()
-    entry.register_id = register_id
-    entry.index.index = index
-    entry.data = value.to_bytes(4, byteorder='big')  # Adjust byte length as needed
-
-    update = p4runtime_pb2.Update()
-    update.type = p4runtime_pb2.Update.MODIFY
-    update.entity.register_entry.CopyFrom(entry)
-
-    request = p4runtime_pb2.WriteRequest()
-    request.device_id = device_id
-    request.election_id.low = 2  # Must match the controller's arbitration ID
-    request.updates.extend([update])
-
-    stub.Write(request)
-    logger.info(f"Register {register_name}[{index}] <- {value}")
-
-
-def get_register_id(p4info, register_name):
-    for reg in p4info.registers:
-        if reg.preamble.name == register_name:
-            return reg.preamble.id
-    raise KeyError(f"Register {register_name} not found")
 
 
 def get_digest_id(p4info, digest_name):
@@ -192,6 +123,7 @@ def build_digest_field_map(p4info, digest_name):
             return field_list
     raise ValueError(f"Digest '{digest_name}' not found in P4Info.")
 
+
 def get_registers_from_switch(thrift_client):
     config = json.loads(thrift_client.bm_get_config())
 
@@ -199,6 +131,7 @@ def get_registers_from_switch(thrift_client):
     for register_array in config["register_arrays"]:
         registers.append(register_array["name"])
     return registers
+
 
 def get_DuneDigest(entry, field_list, logger):
     logger.debug("  Digest entry:")
@@ -223,23 +156,34 @@ def send_digest_ack(digest_id, list_id, request_queue):
 
 
 def handle_dune_digest(dune_digest, sw):
-    if dune_digest.is_refresh == 1:
-        match_key = [("hdr.ipv4.src_addr", str(dune_digest.source_addr)),
-                     ("hdr.ipv4.dst_addr", str(dune_digest.destin_addr)),
-                     ("meta.hdr_srcport", str(dune_digest.source_port)),
-                     ("meta.hdr_dstport", str(dune_digest.destin_port)),
-                     ("hdr.ipv4.protocol", str(dune_digest.protocol))]
-        action_params = ["0"]
-        sw.grpc_client.table_add(
-                "MyIngress.flow_action_table",
-                "MyIngress.set_flow_action",
-                match_key=match_key,
-                action_params=action_params,
-                priority=0
-        )
+    client = sw.thrift_client
+    cxt_id = 0
 
-        for register in sw.registers:
-            thrift_client.bm_register_write(0, register, dune_digest.register_index, 0)
+    match_keys = [
+        BmMatchParam(exact=BmMatchParamExact(dune_digest.src_addr.to_bytes(4, 'big'))),
+        BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_addr.to_bytes(4, 'big'))),
+        BmMatchParam(exact=BmMatchParamExact(dune_digest.src_port.to_bytes(2, 'big'))),
+        BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_port.to_bytes(2, 'big'))),
+        BmMatchParam(exact=BmMatchParamExact(dune_digest.protocol.to_bytes(1, 'big')))
+    ]
+
+    options = BmAddEntryOptions()
+    # If you are doing ternary or LPM matches and need to set priority, you must use:
+    # options.priority = 10  # or whatever
+
+    action_data = [dune_digest.flow_class.to_bytes(1, 'big')] 
+
+    client.bm_mt_add_entry(
+        cxt_id,
+        "DuneIngress.IsFlowClassKnownLocally.FlowClass",
+        match_keys,
+        "DuneIngress.IsFlowClassKnownLocally.MetaSetFlowClass",
+        action_data,
+        options
+    )
+
+    for register in sw.registers:
+        client.bm_register_write(cxt_id, register, dune_digest.register_index, 0)
 
 
 def listen_for_digests(digest_name, sw, logger):
@@ -256,35 +200,21 @@ def listen_for_digests(digest_name, sw, logger):
         except StopIteration:
             break
         except Exception as e:
-            logger.info(f"[!] Error receiving stream message: {e}")
+            logger.error(f"[!] Error receiving stream message: {e}")
             break
 
         if response.HasField("digest"):
             digest = response.digest
-            logger.info(f"\n[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
+            logger.info(f"[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
 
-            # TODO: refactor into a function
             for entry in digest.data:
                 dune_digest = get_DuneDigest(entry, field_list, logger)
                 handle_dune_digest(dune_digest, sw)
-                logger.info(f"  [✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
+                logger.info(f"[✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
                 logger.debug("      Digest Content: %s", dune_digest)
 
             send_digest_ack(digest_id=digest.digest_id, list_id=digest.list_id, request_queue=request_queue)
-            logger.info("  [✓] Sent digest_ack\n")
-
-            # TODO: write to csv file
-            # csv_src_addr = (dune_digest.ipaddress.IPv4Address(source_addr))
-            # csv_dst_addr = (dune_digest.ipaddress.IPv4Address(destin_addr))
-            # csv_row = f"{csv_src_addr},{csv_dst_addr},{source_port},{destin_port},{protocol},{pkt_count},{is_flow}"
-            # if is_store == 1:
-            #     if flow_packet_class == classe:
-            #         csv_row = f"{csv_row},{32}"
-            #     else:
-            #         csv_row = f"{csv_row},{flow_packet_class}"
-            # else:
-            #     csv_row = f"{csv_row},{55}"
-            # print(csv_row, file=output)
+            logger.info("[✓] Sent digest_ack\n")
 
 
         else:
@@ -296,10 +226,10 @@ def listen_for_digests(digest_name, sw, logger):
 if __name__ == '__main__':
     devices = {
         "s1": {"address": "127.0.0.1", "grpc_port": 50051, "thrift_port": 9091, "device_id": 1},
-        "s2": {"address": "127.0.0.1", "grpc_port": 50052, "thrift_port": 9092, "device_id": 2},
-        "s3": {"address": "127.0.0.1", "grpc_port": 50053, "thrift_port": 9093, "device_id": 3},
+#         "s2": {"address": "127.0.0.1", "grpc_port": 50052, "thrift_port": 9092, "device_id": 2},
+#         "s3": {"address": "127.0.0.1", "grpc_port": 50053, "thrift_port": 9093, "device_id": 3},
     }
-    digest_name = "flow_class_digest"
+    digest_name = "FlowDigest_t"
 
     switches = {}
 
@@ -311,7 +241,8 @@ if __name__ == '__main__':
 
         # Thrift connection to the switch
         # (because registers not implemented in GRPC)
-        thrift_client: Client = bm.thrift_connect_standard(
+        # thrift_client: Client = bm.thrift_connect_standard(
+        thrift_client = bm.thrift_connect_standard(
             thrift_ip=info["address"],
             thrift_port=info["thrift_port"],
         )
