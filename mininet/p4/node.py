@@ -8,6 +8,7 @@ import psutil
 import tempfile
 import time
 import multiprocessing
+import requests
 
 
 def assertIsFile(path):
@@ -69,6 +70,8 @@ class P4SimpleSwitchGRPC(Switch):
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
+        self.controller_is_connected = False
+
         self.model_config = model_config
         self.model_dir = model_dir
         self.objects_dir = objects_dir
@@ -98,13 +101,10 @@ class P4SimpleSwitchGRPC(Switch):
         self.start_cmd += ['--log-console']
         self.start_cmd += ['--thrift-port', str(self.thrift_port)]
         self.start_cmd += ['--']
-        self.start_cmd += ['--grpc-server-addr', f'localhost:{self.grpc_port}']
+        self.start_cmd += ['--grpc-server-addr', f'127.0.0.1:{self.grpc_port}']
 
         self.start_cmd = ' '.join(self.start_cmd)
  
-    def config(self):
-        print('Switch config')
-
     @staticmethod
     def is_port_listening(port):
         for c in psutil.net_connections(kind='inet'):
@@ -134,13 +134,14 @@ class P4SimpleSwitchGRPC(Switch):
             self.cmd(self.start_cmd + ' > ' + log_file + ' 2>&1 & echo $! >> ' + f.name)
             pid = int(f.read())
         assert self.as_switch_started(pid), 'Switch ' + self.name + ' failed to start before timeout'
-        # TODO :
-        # Maybe send info to controller ?
+        self.controller = controllers[0]
+        self.controller_is_connected = False
 
     def stop(self):
         self.cmd(f'pkill -f "{self.start_cmd}"')
 
     # Using batchStartup to program the switches in parallel
+    # and advertise to controller when ready
     @classmethod
     def batchStartup(cls, switches):
         processes = []
@@ -158,16 +159,14 @@ class P4SimpleSwitchGRPC(Switch):
             for ps in processes:
                 ps.terminate()
             raise KeyboardInterrupt
+        for sw in switches:
+            sw.advertise_to_controller()
         return switches
 
-    # TODO (MAYBE ?)
-    # Use the connected function to notify the controller ?
     def connected(self):
-        # When programming the switch, if the the wait-connected is not set the do it
-        # else let this function do it
-        print('Switch connected')
-        #TODO
-        return True
+        if not self.controller_is_connected:
+            self.advertise_to_controller()
+        return self.controller_is_connected
 
     def populate_tables(sw):
         args = ['python', 'convert_RF_and_populate_tables.py']
@@ -183,24 +182,39 @@ class P4SimpleSwitchGRPC(Switch):
         populate_cmd = ' '.join(args)
         sw.cmd(populate_cmd)
 
+    def advertise_to_controller(self):
+        req = 'http://' + self.controller.ip + ':' + str(self.controller.port) + '/advertise'
+        data = {
+            'grpc_port': self.grpc_port,
+            'thrift_port': self.thrift_port,
+            'device_id': self.device_id
+        }
+        response = requests.post(req, json=data)
+        self.controller_is_connected = response.json()['ack']
+
 switches = { 'p4simpleswitchgrpc' : P4SimpleSwitchGRPC }
 
 class P4Controller(Controller):
+    ctrl_path = 'controller/grpc_client.py'
+    assertIsFile(ctrl_path)
+
     def __init__(self, name, **kwargs):
         Controller.__init__(self, name, **kwargs)
-        print('Controller init')
 
-    #def config(self, grpc_port, thrift_port, device_id, classe):
-    #    print('Controller config')
-    #    pass
+        args = ['python', P4Controller.ctrl_path]
+        args += ['--ip', str(self.ip)]
+        args += ['--port', str(self.port)]
+
+        self.start_cmd = ' '.join(args)
 
     def start(self):
-        print('Controller start')
-        pass
+        assert not P4SimpleSwitchGRPC.is_port_listening(self.port)
+
+        # TODO : better logging
+        self.cmd(self.start_cmd + ' > output 2>&1 &')
 
     def stop(self):
-        print('Controller stop')
-        pass
+        self.cmd(f'pkill -f "{self.start_cmd}"')
 
 
 controllers = { 'p4controller' : P4Controller }
