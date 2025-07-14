@@ -220,8 +220,8 @@ control InferenceModel(
 	}
  
 
-    action SetClass0(Class_t vote_result) {
-        class = vote_result;
+    action SetClass0(Class_t classe) {
+        class = classe;
     }
     action SetClass0ToUnknown() {
         class = UNKNOWN_FLOW_CLASS;
