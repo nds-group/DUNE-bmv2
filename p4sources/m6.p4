@@ -71,11 +71,11 @@ struct Features_t {
 };
 
 struct Codewords_t {
-    bit<32> codeword1_0;
-    bit<12> codeword1_1;
-    bit<10> codeword1_2;
-    bit<32> codeword1_3;
-    bit<42> codeword1_4;
+    bit<32> codeword0_0;
+    bit<12> codeword0_1;
+    bit<10> codeword0_2;
+    bit<32> codeword0_3;
+    bit<42> codeword0_4;
 }
 
 control InferenceModel(
@@ -87,74 +87,74 @@ control InferenceModel(
 )
 {
     Codewords_t codewords = {0,0,0,0,0};
-    action SetCode7(bit<32> code0) {
-        codewords.codeword1_0 = code0;
+    action SetCode0(bit<32> code0) {
+        codewords.codeword0_0 = code0;
     }
-    action SetCode8(bit<12> code0) {
-        codewords.codeword1_1 = code0;
+    action SetCode1(bit<12> code0) {
+        codewords.codeword0_1 = code0;
     }
-    action SetCode9(bit<10> code0) {
-        codewords.codeword1_2 = code0;
+    action SetCode2(bit<10> code0) {
+        codewords.codeword0_2 = code0;
     }
-    action SetCode10(bit<32> code0) {
-        codewords.codeword1_3 = code0;
+    action SetCode3(bit<32> code0) {
+        codewords.codeword0_3 = code0;
     }
-    action SetCode11(bit<42> code0) {
-        codewords.codeword1_4 = code0;
+    action SetCode4(bit<42> code0) {
+        codewords.codeword0_4 = code0;
     }
 
     action nop() {}
 
     Features_t features;
     //  ['ip.len' 'ip.ttl' 'tcp.window_size_value' 'srcport' 'dstport']
-    table TableFeature7{
-	    key = {features.ip_len: range @name("feature7");}
-	    actions = {@defaultonly nop; SetCode7;}
+    table TableFeature0{
+	    key = {features.ip_len: range @name("feature0");}
+	    actions = {@defaultonly nop; SetCode0;}
 	    size = 30;
         const default_action = nop();
 	}
-    table TableFeature8{
-	    key = {features.ip_ttl: range @name("feature8");}
-	    actions = {@defaultonly nop; SetCode8;}
+    table TableFeature1{
+	    key = {features.ip_ttl: range @name("feature1");}
+	    actions = {@defaultonly nop; SetCode1;}
 	    size = 15;
         const default_action = nop();
 	}
-    table TableFeature9{
-        key = {features.tcp_window: range @name("feature9");}
-	    actions = {@defaultonly nop; SetCode9;}
+    table TableFeature2{
+        key = {features.tcp_window: range @name("feature2");}
+	    actions = {@defaultonly nop; SetCode2;}
 	    size = 15;
         const default_action = nop();
 	}
-    table TableFeature10{
-	    key = {features.src_port: range @name("feature10");}
-	    actions = {@defaultonly nop; SetCode10;}
+    table TableFeature3{
+	    key = {features.src_port: range @name("feature3");}
+	    actions = {@defaultonly nop; SetCode3;}
 	    size = 40;
         const default_action = nop();
 	}
-    table TableFeature11{
-	    key = {features.dst_port: range @name("feature11");}
-	    actions = {@defaultonly nop; SetCode11;}
+    table TableFeature4{
+	    key = {features.dst_port: range @name("feature4");}
+	    actions = {@defaultonly nop; SetCode4;}
 	    size = 50;
         const default_action = nop();
 	}
 
-    action SetClass1(bit<8> classe) {
+    action SetClass0(bit<8> classe) {
         class = classe;
     }
-    action SetClass1ToUnknown() {
+    action SetClass0ToUnknown() {
         class = UNKNOWN_FLOW_CLASS;
     }
-	table CodeTable1 {
+	table CodeTable0 {
         key = {
-            codewords.codeword1_0: ternary;
-            codewords.codeword1_1: ternary;
-            codewords.codeword1_2: ternary;
-            codewords.codeword1_3: ternary;
-            codewords.codeword1_4: ternary;
+            codewords.codeword0_0: ternary;
+            codewords.codeword0_1: ternary;
+            codewords.codeword0_2: ternary;
+            codewords.codeword0_3: ternary;
+            codewords.codeword0_4: ternary;
         }
-	    actions = {SetClass1; @defaultonly SetClass1ToUnknown;}
+	    actions = {SetClass0; @defaultonly SetClass0ToUnknown;}
 	    size = 129;
-        const default_action = SetClass1ToUnknown();
+        const default_action = SetClass0ToUnknown();
 	}
 
     apply {
@@ -168,13 +168,13 @@ control InferenceModel(
         features.src_port = meta.src_port;
         features.dst_port = meta.dst_port;
 
-        TableFeature7.apply();
-        TableFeature8.apply();
-        TableFeature9.apply();
-        TableFeature10.apply();
-        TableFeature11.apply();
+        TableFeature0.apply();
+        TableFeature1.apply();
+        TableFeature2.apply();
+        TableFeature3.apply();
+        TableFeature4.apply();
 
-        CodeTable1.apply();
+        CodeTable0.apply();
     }
 }
 

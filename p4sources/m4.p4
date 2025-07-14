@@ -72,12 +72,12 @@ struct Features_t {
 };
 
 struct Codewords_t {
-    bit<7> codeword1_0;
-    bit<13> codeword1_1;
-    bit<9> codeword1_2;
-    bit<18> codeword1_3;
-    bit<18> codeword1_4;
-    bit<19> codeword1_5;
+    bit<7> codeword0_0;
+    bit<13> codeword0_1;
+    bit<9> codeword0_2;
+    bit<18> codeword0_3;
+    bit<18> codeword0_4;
+    bit<19> codeword0_5;
 }
 
 control InferenceModel(
@@ -90,83 +90,83 @@ control InferenceModel(
 {
     Codewords_t codewords = {0,0,0,0,0,0};
 
-    action SetCode5(bit<7> code0) {
-        codewords.codeword1_0 = code0;
+    action SetCode0(bit<7> code0) {
+        codewords.codeword0_0 = code0;
     }
-    action SetCode6(bit<13> code0) {
-        codewords.codeword1_1 = code0;
+    action SetCode1(bit<13> code0) {
+        codewords.codeword0_1 = code0;
     }
-    action SetCode7(bit<9> code0) {
-        codewords.codeword1_2 = code0;
+    action SetCode2(bit<9> code0) {
+        codewords.codeword0_2 = code0;
     }
-    action SetCode8(bit<18> code0) {
-        codewords.codeword1_3 = code0;
+    action SetCode3(bit<18> code0) {
+        codewords.codeword0_3 = code0;
     }
-    action SetCode9(bit<18> code0) {
-        codewords.codeword1_4 = code0;
+    action SetCode4(bit<18> code0) {
+        codewords.codeword0_4 = code0;
     }
-    action SetCode10(bit<19> code0) {
-        codewords.codeword1_5 = code0;
+    action SetCode5(bit<19> code0) {
+        codewords.codeword0_5 = code0;
     }
 
     action nop() {}
 
     Features_t features;
-    table TableFeature5{
-	    key = {features.tcp_data_off: range @name("feature5");}
-	    actions = {@defaultonly nop; SetCode5;}
+    table TableFeature0{
+	    key = {features.tcp_data_off: range @name("feature0");}
+	    actions = {@defaultonly nop; SetCode0;}
 	    size = 10;
         const default_action = nop();
 	}
-    table TableFeature6{
-	    key = {features.src_port: range @name("feature6");}
-	    actions = {@defaultonly nop; SetCode6;}
+    table TableFeature1{
+	    key = {features.src_port: range @name("feature1");}
+	    actions = {@defaultonly nop; SetCode1;}
 	    size = 15;
         const default_action = nop();
 	}
-    table TableFeature7{
-        key = {features.udp_len: range @name("feature7");}
-	    actions = {@defaultonly nop; SetCode7;}
+    table TableFeature2{
+        key = {features.udp_len: range @name("feature2");}
+	    actions = {@defaultonly nop; SetCode2;}
 	    size = 15;
         const default_action = nop();
 	}
-    table TableFeature8{
-	    key = {features.ip_ttl: range @name("feature8");}
-	    actions = {@defaultonly nop; SetCode8;}
+    table TableFeature3{
+	    key = {features.ip_ttl: range @name("feature3");}
+	    actions = {@defaultonly nop; SetCode3;}
 	    size = 15;
         const default_action = nop();
 	}
-    table TableFeature9{
-	    key = {features.dst_port: range @name("feature9");}
-	    actions = {@defaultonly nop; SetCode9;}
+    table TableFeature4{
+	    key = {features.dst_port: range @name("feature4");}
+	    actions = {@defaultonly nop; SetCode4;}
 	    size = 20;
         const default_action = nop();
 	}
-    table TableFeature10{
-	    key = {features.tcp_window: range @name("feature10");}
-	    actions = {@defaultonly nop; SetCode10;}
+    table TableFeature5{
+	    key = {features.tcp_window: range @name("feature5");}
+	    actions = {@defaultonly nop; SetCode5;}
 	    size = 20;
         const default_action = nop();
 	}
 
-    action SetClass1(bit<8> classe) {
+    action SetClass0(bit<8> classe) {
         class = classe;
     }
-    action SetClass1ToUnknown() {
+    action SetClass0ToUnknown() {
         class = UNKNOWN_FLOW_CLASS;
     }
-	table CodeTable1{
+	table CodeTable0{
         key = {
-            codewords.codeword1_0: ternary;
-            codewords.codeword1_1: ternary;
-            codewords.codeword1_2: ternary;
-            codewords.codeword1_3: ternary;
-            codewords.codeword1_4: ternary;
-            codewords.codeword1_5: ternary;
+            codewords.codeword0_0: ternary;
+            codewords.codeword0_1: ternary;
+            codewords.codeword0_2: ternary;
+            codewords.codeword0_3: ternary;
+            codewords.codeword0_4: ternary;
+            codewords.codeword0_5: ternary;
         }
-	    actions = {SetClass1; @defaultonly SetClass1ToUnknown;}
+	    actions = {SetClass0; @defaultonly SetClass0ToUnknown;}
 	    size = 85;
-        const default_action = SetClass1ToUnknown();
+        const default_action = SetClass0ToUnknown();
 	}
 
     apply {
@@ -189,14 +189,14 @@ control InferenceModel(
             features.tcp_window = 0;
         }
 
+        TableFeature0.apply();
+        TableFeature1.apply();
+        TableFeature2.apply();
+        TableFeature3.apply();
+        TableFeature4.apply();
         TableFeature5.apply();
-        TableFeature6.apply();
-        TableFeature7.apply();
-        TableFeature8.apply();
-        TableFeature9.apply();
-        TableFeature10.apply();
 
-        CodeTable1.apply();
+        CodeTable0.apply();
     }
 }
 
