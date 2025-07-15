@@ -1,4 +1,5 @@
 from mininet.topo import Topo
+from abc import ABC, abstractmethod
 
 from os.path import isfile, isdir
 import json
@@ -19,7 +20,7 @@ def loadJsonFile(path):
         return json.load(file)
 
 
-class Dune(Topo):
+class Dune(Topo, ABC):
     def assignModels(self):
         G = nx.Graph()
         G.add_nodes_from(self.topo['switches'])
@@ -82,7 +83,17 @@ class Dune(Topo):
                     assert self.model_assignment[sw] is None, 'A switch received more than one model'
                     self.model_assignment[sw] = self.models[m]
 
-    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir):
+
+    @abstractmethod
+    def set_topo(self, topo):
+        """
+        Set the topology for the Dune instance.
+        This method should be implemented by subclasses to define how the topology is set.
+        """
+        pass
+
+
+    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         assertIsFile(topo)
         assertIsFile(models)
         assertIsDir(models_dir)
@@ -90,7 +101,8 @@ class Dune(Topo):
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
-        self.topo = loadJsonFile(topo)
+        self.set_topo(topo, **kwargs)
+        assert self.topo
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
         self.objects_dir = objects_dir
@@ -114,4 +126,44 @@ class Dune(Topo):
         for nodes in self.topo['links']:
             self.addLink(nodes[0], nodes[1])
 
-topos = { 'dune' : Dune }
+
+class DuneJsonTopo(Dune):
+    def set_topo(self, topo):
+        self.topo = loadJsonFile(topo)
+
+
+class DuneFatTree(Dune):
+    def set_topo(self, topo, spines=2, leafs=3, hosts_per_leaf=1):
+        topo = {
+            'switches': [],
+            'hosts': [],
+            'links': []
+        }
+        for i in range(spines):
+            # Create spine switches
+            topo['switches'].append(f'spine{i}')
+            # Create DC interconnect hosts
+            topo['hosts'].append(f'dc_host{i}')
+            for j in range(spines):
+                # Connect spines to DC interconnect hosts
+                topo['links'].append([f'spine{i}', f'dc_host{j}'])
+
+        for i in range(leafs):
+            # Create leaf switches
+            topo['switches'].append(f'leaf{i}')
+            # Connect leafs to spines
+            for j in range(spines):
+                topo['links'].append([f'spine{j}', f'leaf{i}'])
+            # Create hosts
+            for j in range(hosts_per_leaf):
+                topo['hosts'].append(f'host{i}_{j}')
+                # Connect hosts to leafs
+                topo['links'].append([f'leaf{i}', f'host{i}_{j}'])
+
+        self.topo = topo
+
+
+
+
+topos = { 'dunejson' : DuneJsonTopo,
+          'dunefattree': DuneFatTree}
