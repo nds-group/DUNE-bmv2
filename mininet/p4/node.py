@@ -8,7 +8,7 @@ import psutil
 import tempfile
 import time
 import multiprocessing
-import requests
+import socket
 
 
 def assertIsFile(path):
@@ -90,21 +90,6 @@ class P4SimpleSwitchGRPC(Switch):
         self.device_id = self.get_device_id()
         self.grpc_port, self.thrift_port = self.get_ports()
 
-        self.start_cmd = [P4SimpleSwitchGRPC.sw_path]
-        for port, intf in self.intfs.items():
-            if not intf.IP():
-                self.start_cmd += ['-i', str(port) + '@' + intf.name]
-        self.start_cmd += ['--pcap', 'pcaps']
-        self.start_cmd += ['--nanolog', f'ipc:///tmp/bm-{self.device_id}-log.ipc']
-        self.start_cmd += ['--device-id', str(self.device_id)]
-        self.start_cmd += [self.sw_json]
-        self.start_cmd += ['--log-console']
-        self.start_cmd += ['--thrift-port', str(self.thrift_port)]
-        self.start_cmd += ['--']
-        self.start_cmd += ['--grpc-server-addr', f'127.0.0.1:{self.grpc_port}']
-
-        self.start_cmd = ' '.join(self.start_cmd)
- 
     @staticmethod
     def is_port_listening(port):
         for c in psutil.net_connections(kind='inet'):
@@ -127,6 +112,21 @@ class P4SimpleSwitchGRPC(Switch):
         assert_msg = '{} cannot bind port {} because it is bound by another process\n'
         assert not self.is_port_listening(self.grpc_port), assert_msg.format(self.name, self.grpc_port)
         assert not self.is_port_listening(self.thrift_port), assert_msg.format(self.name, self.thrift_port)
+
+        self.start_cmd = [P4SimpleSwitchGRPC.sw_path]
+        for port, intf in self.intfs.items():
+            if not intf.IP():
+                self.start_cmd += ['-i', str(port) + '@' + intf.name]
+        self.start_cmd += ['--pcap', 'pcaps']
+        self.start_cmd += ['--nanolog', f'ipc:///tmp/bm-{self.device_id}-log.ipc']
+        self.start_cmd += ['--device-id', str(self.device_id)]
+        self.start_cmd += [self.sw_json]
+        self.start_cmd += ['--log-console']
+        self.start_cmd += ['--thrift-port', str(self.thrift_port)]
+        self.start_cmd += ['--']
+        self.start_cmd += ['--grpc-server-addr', f'127.0.0.1:{self.grpc_port}']
+
+        self.start_cmd = ' '.join(self.start_cmd)
 
         pid = None
         with tempfile.NamedTemporaryFile() as f:
@@ -183,23 +183,27 @@ class P4SimpleSwitchGRPC(Switch):
         sw.cmd(populate_cmd)
 
     def advertise_to_controller(self):
-        req = 'http://' + self.controller.ip + ':' + str(self.controller.port) + '/advertise'
-        data = {
-            'grpc_port': self.grpc_port,
-            'thrift_port': self.thrift_port,
-            'device_id': self.device_id
-        }
-        response = requests.post(req, json=data)
-        self.controller_is_connected = response.json()['ack']
+        self.controller_is_connected = True
+        return
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((self.controller.ip, self.controller.port))
+            data = f'{self.grpc_port},{self.thrift_port},{self.device_id}'
+            s.sendall(data.encode())
+            print('Sending data')
+
+            ack = s.recv(1024).decode()
+            self.controller_is_connected = ack == 'ACK'
+            print('Received ack :', ack)
 
 switches = { 'p4simpleswitchgrpc' : P4SimpleSwitchGRPC }
 
 class P4Controller(Controller):
-    ctrl_path = 'controller/grpc_client.py'
+    ctrl_path = 'controller.py'
     assertIsFile(ctrl_path)
 
     def __init__(self, name, **kwargs):
         Controller.__init__(self, name, **kwargs)
+        return
 
         args = ['python', P4Controller.ctrl_path]
         args += ['--ip', str(self.ip)]
@@ -208,12 +212,14 @@ class P4Controller(Controller):
         self.start_cmd = ' '.join(args)
 
     def start(self):
+        return
         assert not P4SimpleSwitchGRPC.is_port_listening(self.port)
 
         # TODO : better logging
         self.cmd(self.start_cmd + ' > output 2>&1 &')
 
     def stop(self):
+        return
         self.cmd(f'pkill -f "{self.start_cmd}"')
 
 

@@ -4,6 +4,7 @@ from p4.v1 import p4runtime_pb2
 from p4.v1 import p4runtime_pb2_grpc
 
 import bmpy_utils as bm
+
 from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions
 
 from collections import namedtuple
@@ -19,6 +20,7 @@ logger = get_global_logger()
 logger.info("Starting P4Runtime client")
 
 # Global flag to exit cleanly
+
 running = True
 
 Switch = namedtuple('Switch', 
@@ -57,6 +59,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def connect_to_switch(address='127.0.0.1:50051', device_id=0):
+    # TODO : Maybe close the channel ?
     channel = grpc.insecure_channel(address)
     stub = p4runtime_pb2_grpc.P4RuntimeStub(channel)
 
