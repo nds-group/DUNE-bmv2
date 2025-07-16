@@ -15,7 +15,7 @@
 
 typedef bit<8> Class_t;
 
-const Class_t UNKNOWN_FLOW_CLASS = 0;
+#define UNKNOWN_FLOW_CLASS ((Class_t) 0)
 
 // Use typedef instead of type to for comparaisons without casting
 #define PKT_CNT_BIT_WIDTH 32

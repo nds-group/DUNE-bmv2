@@ -6,7 +6,7 @@
 // - StatefullFeatures_t
 // - UpdateAndGetStatefullFeatures
 // - GetStatefullFeaturesDefaultValues
-// - ResetFlowFeaturesIfInferencePointNotReached
+// - INFERENCE_POINT
 // - InferenceModel
 // are shared with the ingress control block. They must be the same
 // or the compilation will fail.
@@ -106,25 +106,7 @@ control GetStatefullFeaturesDefaultValues(
     } 
 }
 
-control ResetFlowFeaturesIfInferencePointNotReached(
-    in PktCount_t pkt_count,
-    inout StatefullFeatures_t statefull_features,
-    out InferencePointStatus_t inference_point_status
-)
-{
-    const PktCount_t inference_point = 3;
-
-    apply {
-        if (pkt_count < inference_point) {
-            inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
-            GetStatefullFeaturesDefaultValues.apply(statefull_features);
-        } else if (pkt_count > inference_point) {
-            inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
-        } else {
-            inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
-        }
-    }
-}
+#define INFERENCE_POINT 3
 
 struct Features_t {
     bit<16> udp_len;

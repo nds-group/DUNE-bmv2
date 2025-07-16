@@ -112,6 +112,30 @@ control GetPktCount(
         pkt_counts.write(hashes.reg_idx32, pkt_count);
     }
 }
+
+#ifndef INFERENCE_POINT
+    #error "The inference point of the model is not defined"
+#elif INFERENCE_POINT < 1
+    #error "The inference point of the model must be at least 1"
+#endif
+
+control ResetFlowFeaturesIfInferencePointNotReached(
+    in PktCount_t pkt_count,
+    inout StatefullFeatures_t statefull_features,
+    out InferencePointStatus_t inference_point_status
+)
+{
+    apply {
+        if (pkt_count < INFERENCE_POINT) {
+            inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
+            GetStatefullFeaturesDefaultValues.apply(statefull_features);
+        } else if (pkt_count > INFERENCE_POINT) {
+            inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
+        } else {
+            inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
+        }
+    }
+}
     
 control DuneIngress(
     inout Headers_t hdr,
