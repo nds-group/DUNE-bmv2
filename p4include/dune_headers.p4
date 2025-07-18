@@ -15,13 +15,17 @@
 
 typedef bit<8> Class_t;
 
-const Class_t UNKNOWN_FLOW_CLASS = 0;
+#define UNKNOWN_FLOW_CLASS ((Class_t) 0)
+
+// Use typedef instead of type to for comparaisons without casting
+#define PKT_CNT_BIT_WIDTH 32
+typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
     Class_t flow_class;
     bool collision;
-    bit<8> pkt_count; // TODO : make bigger than 8 ? or remove ?
+    PktCount_t pkt_count;
     /* TODO : */
     // Forwarding
     bit<7> _padding_;
@@ -39,12 +43,8 @@ struct Headers_t {
 #define ID_BIT_WIDTH 32
 #define IDX_BIT_WIDTH 16
 
-type bit<ID_BIT_WIDTH> FlowId_t;
-type bit<IDX_BIT_WIDTH> RegIdx_t;
-
-// Use typedef instead of type to for comparaisons without casting
-#define PKT_CNT_BIT_WIDTH 32
-typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
+typedef bit<ID_BIT_WIDTH> FlowId_t;
+typedef bit<IDX_BIT_WIDTH> RegIdx_t;
 
 #define NB_REG_ENTRIES (1 << IDX_BIT_WIDTH)
 
@@ -65,12 +65,24 @@ struct Metadata_t {
 }
 
 struct FlowDigest_t {
-    /* TODO */
+    IPv4Address src_addr;
+    IPv4Address dst_addr;
+    bit<16> src_port;
+    bit<16> dst_port;
+    IPv4Protocol protocol;
+    Class_t flow_class;
+    RegIdx_t register_index;
 }
 
 // The Bmv2 uses timestamps in microseconds whereas Tofino uses nanoseconds.
 // DUNE was initialy developped for Tofino so use the following
 // macro when converting models using time trained on Tofino to Bmv2.
 #define BMV2_TIME(T) (1000 * (T))
+
+enum InferencePointStatus_t {
+    BELOW_INFERENCE_POINT,
+    AT_INFERENCE_POINT,
+    AFTER_INFERENCE_POINT
+}
 
 #endif

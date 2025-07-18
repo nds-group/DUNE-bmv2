@@ -6,12 +6,12 @@
 // - StatefullFeatures_t
 // - UpdateAndGetStatefullFeatures
 // - GetStatefullFeaturesDefaultValues
-// - ResetFlowFeaturesIfInferencePointNotReached
+// - INFERENCE_POINT
 // - InferenceModel
 // are shared with the ingress control block. They must be the same
 // or the compilation will fail.
 
-#include "include/dune_headers.p4"
+#include "dune_headers.p4"
 
 typedef bit<32> Time_t;
 
@@ -101,20 +101,7 @@ control GetStatefullFeaturesDefaultValues(
     } 
 }
 
-
-control ResetFlowFeaturesIfInferencePointNotReached(
-    in PktCount_t pkt_count,
-    inout StatefullFeatures_t statefull_features
-)
-{
-    const PktCount_t inference_point = 3;
-
-    apply {
-        if (pkt_count < inference_point) {
-            GetStatefullFeaturesDefaultValues.apply(statefull_features);
-        } 
-    }
-}
+#define INFERENCE_POINT 3
 
 struct Features_t {
     bit<16> ip_len;
@@ -214,8 +201,8 @@ control InferenceModel(
 	}
  
 
-    action SetClass0(Class_t vote_result) {
-        class = vote_result;
+    action SetClass0(Class_t classe) {
+        class = classe;
     }
     action SetClass0ToUnknown() {
         class = UNKNOWN_FLOW_CLASS;
@@ -266,12 +253,12 @@ control InferenceModel(
 // the names mentionned in the WARNING at the top of the file
 // otherwise the compilation will fail
 
-#include "include/dune_ingress_parser.p4"
-#include "include/dune_verify_checksum.p4"
-#include "include/dune_ingress.p4"
-#include "include/dune_egress.p4"
-#include "include/dune_compute_checksum.p4"
-#include "include/dune_egress_deparser.p4"
+#include "dune_ingress_parser.p4"
+#include "dune_verify_checksum.p4"
+#include "dune_ingress.p4"
+#include "dune_egress.p4"
+#include "dune_compute_checksum.p4"
+#include "dune_egress_deparser.p4"
 
 V1Switch(
     DuneIngressParser(),

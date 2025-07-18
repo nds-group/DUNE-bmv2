@@ -4,11 +4,9 @@
 #include "dune_headers.p4"
 
 error {
-    IPv4InvalidHeader
+    IPv4InvalidHeader,
+    Reject
 }
-
-/* TODO */
-// Change default behaviour to reject ?
 
 parser DuneIngressParser(
     packet_in pkt,
@@ -26,7 +24,7 @@ parser DuneIngressParser(
         transition select(hdr.ethernet.ether_type) {
             EtherType.DUNE: parse_dune;
             EtherType.IPV4: parse_ipv4;
-            default: accept;
+            default: to_reject;
         }
     }
 
@@ -34,7 +32,7 @@ parser DuneIngressParser(
         pkt.extract(hdr.dune);
         transition select(hdr.dune.ether_type) {
             EtherType.IPV4: parse_ipv4;
-            default: accept;
+            default: to_reject;
         }
     }
 
@@ -45,7 +43,7 @@ parser DuneIngressParser(
         transition select(hdr.ipv4.protocol) {
             IPv4Proto.TCP: parse_tcp;
             IPv4Proto.UDP: parse_udp;
-            default: accept;
+            default: to_reject;
         }
     }
 
@@ -60,6 +58,13 @@ parser DuneIngressParser(
         pkt.extract(hdr.udp);
         meta.src_port = hdr.udp.src_port;
         meta.dst_port = hdr.udp.dst_port;
+        transition accept;
+    }
+
+    // We cannot transition to the reject directly on Bmv2
+    // C.f. https://github.com/p4lang/behavioral-model/blob/971732f48570f848a27a8f54b25b7447732d8591/docs/simple_switch.md#restrictions-on-parser-code
+    state to_reject {
+        verify(false, error.Reject);
         transition accept;
     }
 }

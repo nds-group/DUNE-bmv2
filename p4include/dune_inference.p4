@@ -1,5 +1,5 @@
-#ifndef DUNE_INGRESS_P4
-#define DUNE_INGRESS_P4
+#ifndef DUNE_INFERENCE_P4
+#define DUNE_INFERENCE_P4
 
 #include "dune_headers.p4"
 
@@ -94,6 +94,7 @@ control CheckCollisionAndNewFlow(
         } else {
             dune.collision = false;
             new_flow = true;
+            flow_ids.write(hashes.reg_idx32, hashes.flow_id);
         }
         UpdateUsedFlowIds();
     }
@@ -111,27 +112,37 @@ control GetPktCount(
         pkt_counts.write(hashes.reg_idx32, pkt_count);
     }
 }
-    
-control DuneIngress(
+
+#ifndef INFERENCE_POINT
+    #error "The inference point of the model is not defined"
+#elif INFERENCE_POINT < 1
+    #error "The inference point of the model must be at least 1"
+#endif
+
+control ResetFlowFeaturesIfInferencePointNotReached(
+    in PktCount_t pkt_count,
+    inout StatefullFeatures_t statefull_features,
+    out InferencePointStatus_t inference_point_status
+)
+{
+    apply {
+        if (pkt_count < INFERENCE_POINT) {
+            inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
+            GetStatefullFeaturesDefaultValues.apply(statefull_features);
+        } else if (pkt_count > INFERENCE_POINT) {
+            inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
+        } else {
+            inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
+        }
+    }
+}
+
+control Inference(
     inout Headers_t hdr,
     inout Metadata_t meta,
     inout standard_metadata_t std_meta
 )
 {
-    action InsertDuneHeaderIfNotPresent() {
-        if (!hdr.dune.isValid()) {
-            // Packet was not equiped with a DUNE header yet
-            hdr.dune = {
-                ether_type = hdr.ethernet.ether_type,
-                flow_class = UNKNOWN_FLOW_CLASS,
-                collision = false,
-                pkt_count = 0,
-                _padding_ = 0
-            };
-            hdr.ethernet.ether_type = EtherType.DUNE;
-        }
-    }
-
     Hash_t hashes;
 
     bool new_flow;
@@ -139,8 +150,10 @@ control DuneIngress(
     StatefullFeatures_t statefull_features;
     Class_t class;
 
+    InferencePointStatus_t inference_point_status;
+    register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
+
     apply {
-        InsertDuneHeaderIfNotPresent();
         // Check if flow is known and populate meta.flow_class
         IsFlowClassKnownLocally.apply(hdr, meta);
         if (UNKNOWN_FLOW_CLASS == meta.flow_class) {
@@ -151,7 +164,15 @@ control DuneIngress(
                 // TODO
                 // Can't remember what to do when colision is this specific case
                 // Send digest and clear registers (in controller, no clear if collision)
-                digest<FlowDigest_t>(1, {});
+                digest<FlowDigest_t>(1, {
+                    hdr.ipv4.src_addr,
+                    hdr.ipv4.dst_addr,
+                    meta.src_port,
+                    meta.dst_port,
+                    hdr.ipv4.protocol,
+                    hdr.dune.flow_class,
+                    hashes.reg_idx
+                });
             } else {
                 // Flow is neither know by a previous switch nor locally
                 if (!hdr.dune.collision) {
@@ -167,20 +188,41 @@ control DuneIngress(
                     pkt_count = 0;
                     GetStatefullFeaturesDefaultValues.apply(statefull_features);
                 }
+                // TODO MAYBE :
+                // Split  :
+                // - GetInferencePoint (in model file)
+                // - GetInferencePointStatus (here)
+                // - GetDefaultFlowFeaturesValues (move reset logic to ingress)
                 ResetFlowFeaturesIfInferencePointNotReached.apply(
                     pkt_count,
-                    statefull_features
-                );
-                InferenceModel.apply(
-                    hdr,
-                    meta,
-                    std_meta,
                     statefull_features,
-                    class
+                    inference_point_status
                 );
+                if (inference_point_status == InferencePointStatus_t.AFTER_INFERENCE_POINT) {
+                    FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
+                } else {
+                    InferenceModel.apply(
+                        hdr,
+                        meta,
+                        std_meta,
+                        statefull_features,
+                        class
+                    );
+                }
                 // TODO :
                 // Inform the switch if the class different from UKNOWN
-                digest<FlowDigest_t>((bit<32>)class, {});
+                // Also, populate DUNE header
+                if (inference_point_status == InferencePointStatus_t.AT_INFERENCE_POINT) {
+                    digest<FlowDigest_t>(2, {
+                        hdr.ipv4.src_addr,
+                        hdr.ipv4.dst_addr,
+                        meta.src_port,
+                        meta.dst_port,
+                        hdr.ipv4.protocol,
+                        class,
+                        hashes.reg_idx
+                    });
+                }
             }
         } else {
             // Flow is already locally known

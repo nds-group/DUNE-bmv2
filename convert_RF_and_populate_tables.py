@@ -9,6 +9,8 @@ import argparse
 pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
 
+import logging
+logging.basicConfig(level=logging.INFO)
 
 ## definition of useful functions
 ## gets all splits and conditions
@@ -258,23 +260,26 @@ def extractKBits(num):
 
 
 def upload_model(model, feature_offset, code_table_offset, index):
+    logging.info('Uploading model : %s', model)
     # import and get entries from trained models ##
     clf = pd.read_pickle(model)
 
     # list the feature names
     feature_names = clf.feature_names_in_
-    print(feature_names)
+    logging.info('Model features : %s', feature_names)
 
     tree_code_sizes = [[] for _ in range(len(clf.estimators_))]
 
+    logging.info('Starting population of feature tables')
     for fea in range(0, len(feature_names)):
+        logging.info('Populating table : InferenceModel.TableFeature%s', fea + feature_offset)
         Ranges, Codes = get_feature_codes_with_ranges(
             get_feature_table(get_splits(clf, feature_names), feature_names[fea]),
             len(clf.estimators_),
         )
         for i, ran in enumerate(Ranges):
-            entry = p4.TableEntry(f"MyIngress.table_feature{fea + feature_offset}")(
-                action=f"MyIngress.SetCode{fea + feature_offset}"
+            entry = p4.TableEntry(f"InferenceModel.TableFeature{fea + feature_offset}")(
+                action=f"InferenceModel.SetCode{fea + feature_offset}"
             )
             start = ran.split(",")[0]
             end = (
@@ -292,22 +297,24 @@ def upload_model(model, feature_offset, code_table_offset, index):
         for j in range(0, len(clf.estimators_)):
             tree_code_sizes[j].append(len(Codes.iloc[0, j]) - 2)
 
-    print(tree_code_sizes)
+    #print(tree_code_sizes)
 
+    logging.info('Starting population of code tables')
     for tree_id in range(0, len(clf.estimators_)):
+        logging.info('Populating table : InferenceModel.CodeTable%s', tree_id + code_table_offset)
         Final_Codes, Final_Masks = get_codes_and_masks(
             clf.estimators_[tree_id], feature_names
         )
         Classe, Certain = get_classes(clf.estimators_[tree_id])
-        print("!!!!!!!!!!!!!!!!!!!!!! DEBUG !!!!!!!!!!!!!!!!!!!!!!")
-        print("Final_Codes unique: ", len(np.unique(Final_Codes)))
-        print("Final_Codes Length: ", len(Final_Codes))
-        print("Final_Masks unique: ", len(np.unique(Final_Masks)))
-        print("Final_Codes Length: ", len(Final_Masks))
+        #print("!!!!!!!!!!!!!!!!!!!!!! DEBUG !!!!!!!!!!!!!!!!!!!!!!")
+        #print("Final_Codes unique: ", len(np.unique(Final_Codes)))
+        #print("Final_Codes Length: ", len(Final_Codes))
+        #print("Final_Masks unique: ", len(np.unique(Final_Masks)))
+        #print("Final_Codes Length: ", len(Final_Masks))
         # print('Classe Length: ', len(Classe.unique()))
         for cod, mas, cla, cer in zip(Final_Codes, Final_Masks, Classe, Certain):
-            entry = p4.TableEntry(f"MyIngress.code_table{tree_id + code_table_offset}")(
-                action=f"MyIngress.SetClass{tree_id + code_table_offset}"
+            entry = p4.TableEntry(f"InferenceModel.CodeTable{tree_id + code_table_offset}")(
+                action=f"InferenceModel.SetClass{tree_id + code_table_offset}"
             )
             start = 0
             cod = str(cod).removeprefix("0b")
@@ -317,7 +324,7 @@ def upload_model(model, feature_offset, code_table_offset, index):
                 mask = f"0b{mas[start : start + size]}"
                 start += size
                 if int(mask, base=0):  # Ignore the "Don't care" mask
-                    entry.match[f"meta.codeword{tree_id + code_table_offset}_{i}"] = (
+                    entry.match[f"codewords.codeword{tree_id + code_table_offset}_{i}"] = (
                         f"{code}&&&{mask}"
                     )
             entry.action["classe"] = str(cla + 1)
@@ -325,6 +332,7 @@ def upload_model(model, feature_offset, code_table_offset, index):
             entry.insert()
 
     try:
+        logging.info('Attempting to populate a voting table')
         if index == 0:
             for i in range(1, 3):
                 for j in range(1, 3):
@@ -332,21 +340,25 @@ def upload_model(model, feature_offset, code_table_offset, index):
                         if (i != j) & (j != k) & (i != k):
                             pass
                         else:
-                            entry = p4.TableEntry("MyIngress.voting_table")(
-                                action="MyIngress.set_final_class"
+                            entry = p4.TableEntry("InferenceModel.VotingTable")(
+                                action="InferenceModel.SetVotingResult"
                             )
-                            entry.match["meta.class0"] = str(i)
-                            entry.match["meta.class1"] = str(j)
-                            entry.match["meta.class2"] = str(k)
-                            entry.action["class_result"] = str(mode([i, j, k]))
+                            entry.match["voting_classes.class0"] = str(i)
+                            entry.match["voting_classes.class1"] = str(j)
+                            entry.match["voting_classes.class2"] = str(k)
+                            entry.action["vote_result"] = str(mode([i, j, k]))
                             entry.insert()
-    except p4.UserError:
-        print("!!! This table does not seem to have a voting table")
+        logging.info('A voting table was populated')
+    except p4.UserError as e:
+        logging.debug(e)
+        logging.info('This model does not seem to have a voting table')
+
+
 
     # Get 'INFERENCE FORWARDING BLOCK' table entries
     # Read csv file to get flow 5 tuple ids (src_addr, hdr.ipv4.dst_addr, meta.hdr_srcport, meta.hdr_dstport, hdr.ipv4.protocol, action)
     # ACTION: Forwarding: 0 Inference: 1
-    if index == 0:
+    if index == -1: # I use -1 to disable populating this specific table
         flow_id_info = pd.read_csv("models/test_data_flow_packet_counts.csv")
         flow_id_info = flow_id_info.dropna()
         flow_id_info = flow_id_info.drop_duplicates(subset=["flow.id"])
@@ -361,8 +373,8 @@ def upload_model(model, feature_offset, code_table_offset, index):
             table[key] = key
             # With all tuple elements
             # try:
-            entry = p4.TableEntry("MyIngress.flow_action_table")(
-                action="MyIngress.set_flow_action"
+            entry = p4.TableEntry("InferenceModel.flow_action_table")(
+                action="InferenceModel.set_flow_action"
             )
             entry.match["hdr.ipv4.src_addr"] = str(int(ip_address(id_values[0])))
             entry.match["hdr.ipv4.dst_addr"] = str(int(ip_address(id_values[1])))
@@ -391,6 +403,7 @@ def main():
     args = parse_args()
 
     # Connecting to the switch
+    logging.info('Establishing GRPC connection')
     p4.setup(
         device_id=args.device_id,
         grpc_addr=f"0.0.0.0:{args.grpc_port}",
@@ -403,6 +416,7 @@ def main():
 
     feature_offset = 0
     code_table_offset = 0
+    logging.info('Uploading models : %s', args.models)
     for index, model in enumerate(args.models):
         len_features, len_code_tables = upload_model(
             model, feature_offset, code_table_offset, index
@@ -411,7 +425,7 @@ def main():
         code_table_offset += len_code_tables
 
     # Configure digest
-    d = p4.DigestEntry("flow_class_digest")
+    d = p4.DigestEntry("FlowDigest_t")
     d.ack_timeout_ns = 10 * 1000000000
     d.max_timeout_ns = 10 * 1000000000
     d.max_list_size = 10000

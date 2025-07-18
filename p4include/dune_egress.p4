@@ -10,8 +10,6 @@ control DuneEgress(
 )
 {
     apply {
-        // TODO :
-        // Do the forwarding
     }
 }
 
