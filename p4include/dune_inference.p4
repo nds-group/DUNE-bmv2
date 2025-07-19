@@ -178,6 +178,7 @@ control Inference(
                 if (!hdr.dune.collision) {
                     GetPktCount.apply(hashes, pkt_count);
                     UpdateAndGetStatefullFeatures.apply(
+                        hdr,
                         std_meta,
                         hashes,
                         pkt_count,

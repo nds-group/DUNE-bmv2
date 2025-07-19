@@ -18,11 +18,12 @@ struct StatefullFeatures_t {
 }
 
 control UpdateAndGetStatefullFeatures(
+    in Headers_t hdr,
     in standard_metadata_t std_meta,
     in Hash_t hashes,
     in PktCount_t pkt_count,
     in bool new_flow,
-    inout StatefullFeatures_t statefull_features
+    out StatefullFeatures_t statefull_features
 )
 {
     apply {
