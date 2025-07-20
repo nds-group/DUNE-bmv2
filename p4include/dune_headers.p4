@@ -14,6 +14,7 @@
 #include "network_headers.p4"
 
 typedef bit<8> Class_t;
+typedef bit<16> mpls_label_t;
 
 #define UNKNOWN_FLOW_CLASS ((Class_t) 0)
 
@@ -26,8 +27,7 @@ header Dune_h {
     Class_t flow_class;
     bool collision;
     PktCount_t pkt_count;
-    /* TODO : */
-    // Forwarding
+    mpls_label_t mpls_label;
     bit<7> _padding_;
 }
 
