@@ -1,6 +1,6 @@
 {
     "m1": {
-        "p4": "ton_iot_m1.p4",
+        "p4": "ton_iot_m1",
         "files": [
             "ton/ToN_IoT_ClID1_T1_F5_L41_N2_With_Others.sav"
         ],
@@ -8,7 +8,7 @@
         "previous": null
     },
     "m2": {
-        "p4": "ton_iot_m2.p4",
+        "p4": "ton_iot_m2",
         "files": [
             "ton/ToN_IoT_ClID3_T1_F12_L129_N3_With_Others.sav"
         ],
@@ -16,7 +16,7 @@
         "previous": "m1"
     },
     "m3": {
-        "p4": "ton_iot_m3.p4",
+        "p4": "ton_iot_m3",
         "files": [
             "ton/ToN_IoT_ClID2_T1_F6_L85_N3_With_Others.sav"
         ],
@@ -24,7 +24,7 @@
         "previous": "m2"
     },
     "m4": {
-        "p4": "ton_iot_m4.p4",
+        "p4": "ton_iot_m4",
         "files": [
             "ton/ToN_IoT_ClID0_T3_F5_L41_N4_With_Others.sav"
         ],

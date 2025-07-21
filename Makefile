@@ -40,22 +40,19 @@ MN_CUSTOM_CLASSES := $(shell find $(MN_DIR) -type f -name '*.py')
 MN_CUSTOM := --custom=$(call join_with_comma,$(MN_CUSTOM_CLASSES))
 
 
-TOPOLOGY := topo_no_populate.json
-MODELS := models_no_populate.json
+TOPOLOGY := configs/topos/topo_no_populate.json
+MODELS := configs/models/model_no_infer.json
 MODELS_DIR := ./models
 TOPO_ARGS := topo=$(TOPOLOGY) \
 			 models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
-			 pcap_dir=$(PCAP_DIR) \
-			 spines=2 \
-			 leafs=3 \
-			 hosts_per_leaf=1
+			 pcap_dir=$(PCAP_DIR)
 
 
 MN_TOPO_CLASS := dunefattree
-MN_TOPO := --topo=dune,$(call join_with_comma,$(TOPO_ARGS))
+MN_TOPO := --topo=dunejson,$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc
 MN_CONTROLLER := --controller=p4controller
 MN_LINK := --link=p4link

@@ -82,7 +82,8 @@ class Dune(Topo, ABC):
                 if X[sw][m].varValue == 1:
                     assert self.model_assignment[sw] is None, 'A switch received more than one model'
                     self.model_assignment[sw] = self.models[m]
-
+            if self.model_assignment[sw] is None:
+                self.model_assignment[sw] = { 'p4': 'no_inference' }
 
     @abstractmethod
     def set_topo(self, topo):

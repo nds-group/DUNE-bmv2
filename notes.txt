@@ -14,12 +14,4 @@ Commands for the controller :
 grep -E ,1,[0-9]+$ unsw_cl_2_0_results_DUNE.csv
 
 
-DEBUG :
-
-It looks like that most packets that are missing from the bmv2
-log are with pkt_count == 0, that is just after a register reset.
-Maybe there is something wrong with my controller sleeping
-
-To explain bad results on second switch, flows that should have been classified on
-the first switch but were not because of the time related features then appear in
-the second one and so on.
+We must have the program 'no_inference.p4'
