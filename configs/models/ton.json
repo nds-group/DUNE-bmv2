@@ -20,7 +20,7 @@
         "files": [
             "ton/ToN_IoT_ClID2_T1_F6_L85_N3_With_Others.sav"
         ],
-        "controller_class": ?,
+        "controller_class": 6,
         "previous": "m2"
     },
     "m4": {
@@ -28,7 +28,7 @@
         "files": [
             "ton/ToN_IoT_ClID0_T3_F5_L41_N4_With_Others.sav"
         ],
-        "controller_class": ?,
+        "controller_class": 8,
         "previous": "m3"
     }
 }
