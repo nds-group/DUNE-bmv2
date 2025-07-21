@@ -55,7 +55,8 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 
 
 MN_TOPO_CLASS := dunefattree
-MN_TOPO := --topo=dune,$(call join_with_comma,$(TOPO_ARGS))
+MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
+MN_HOST := --host=p4host
 MN_SWITCH := --switch=p4simpleswitchgrpc
 MN_CONTROLLER := --controller=p4controller
 MN_LINK := --link=p4link
