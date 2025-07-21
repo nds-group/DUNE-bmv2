@@ -26,36 +26,37 @@ control Forwarding(
         std_meta.egress_spec = port;
     }
 
-    table TablePortToPath{
+    table TableIngressPortToMPLS {
         key = {
-	    std_meta.ingress_port: exact;
-	}
-	actions = {
-	    SetMplsLabel;
-	    nop;
-	}
-	// TODO: change to compile-time variable
-	size = 32;
-	const default_action = nop();
+            std_meta.ingress_port: exact;
+        }
+        actions = {
+            SetMplsLabel;
+            nop;
+        }
+        // TODO: change to compile-time variable
+        size = 32;
+        const default_action = nop();
     }
 
-    table TableMpls{
+    table TableMPLSToEgressPort {
         key = {
-	    hdr.dune.mpls_label: exact;
-	}
-	actions = {
-	    SetEgressPort;
-	    nop;
-	}
-	// TODO: change to compile-time variable
-	size = 1024;
-	const default_action = nop();
+            hdr.dune.mpls_label: exact;
+        }
+        actions = {
+            SetEgressPort;
+            nop;
+        }
+        // TODO: change to compile-time variable
+        size = 1024;
+        const default_action = nop();
     }
+
     apply {
-         if (hdr.dune.mpls_label == 0) {
-	     TablePortToPath.apply();
-	 }
-	 TableMpls.apply();
+        if (hdr.dune.mpls_label == 0) {
+            TableIngressPortToMPLS.apply();
+        }
+        TableMPLSToEgressPort.apply();
     }
 }
     
@@ -72,7 +73,7 @@ control DuneIngress(
                 ether_type = hdr.ethernet.ether_type,
                 flow_class = UNKNOWN_FLOW_CLASS,
                 collision = false,
-		mpls_label = 0,
+                mpls_label = 0,
                 pkt_count = 0,
                 _padding_ = 0
             };
