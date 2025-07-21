@@ -121,7 +121,8 @@ class Dune(Topo, ABC):
                     model_dir=self.models_dir,
                     objects_dir=self.objects_dir,
                     log_dir=self.log_dir,
-                    pcap_dir=self.pcap_dir
+                    pcap_dir=self.pcap_dir,
+                    topo=self.topo
                 )
 
         for nodes in self.topo['links']:

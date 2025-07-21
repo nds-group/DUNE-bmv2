@@ -9,6 +9,7 @@ import tempfile
 import time
 import multiprocessing
 import socket
+import json
 
 
 def assertIsFile(path):
@@ -59,7 +60,7 @@ class P4SimpleSwitchGRPC(Switch):
 
         return (grpc_port, thrift_port)
 
-    def __init__(self, name, model_config, model_dir, objects_dir, log_dir, pcap_dir, **kwargs):
+    def __init__(self, name, model_config, model_dir, objects_dir, log_dir, pcap_dir, topo, **kwargs):
         Switch.__init__(self, name, **kwargs)
         assert model_config is not None, 'No model config provided'
         assertIsDir(model_dir)
@@ -74,6 +75,7 @@ class P4SimpleSwitchGRPC(Switch):
         self.objects_dir = objects_dir
         self.log_dir = log_dir
         self.pcap_dir = pcap_dir
+        self.topo = topo
 
         self.sw_json = os.path.join(objects_dir, self.model_config['p4'] + '.json')
         self.sw_p4info = os.path.join(objects_dir, self.model_config['p4'] + '.p4.p4info.txtpb')
@@ -183,6 +185,20 @@ class P4SimpleSwitchGRPC(Switch):
             args = ['echo', '"The inference pipeline is disabled in this switch"']
 
         log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
+        args += ['>', log_file, '2>&1']
+
+        populate_cmd = ' '.join(args)
+        sw.cmd(populate_cmd)
+
+        args = ['python', 'populate_forwarding_tables.py']
+        args += ['--p4info', sw.sw_p4info]
+        args += ['--json', sw.sw_json]
+        args += ['--grpc-port', str(sw.grpc_port)]
+        args += ['--device-id', str(sw.device_id)]
+        json_dump = json.dumps(sw.topo['paths'])
+        args += ['--paths' , f"'{json_dump}'"]
+
+        log_file = os.path.join(sw.log_dir, 'populate_forward_' + sw.name + '.txt')
         args += ['>', log_file, '2>&1']
 
         populate_cmd = ' '.join(args)
