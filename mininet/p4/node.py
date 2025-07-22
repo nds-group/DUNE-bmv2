@@ -80,12 +80,15 @@ class P4SimpleSwitchGRPC(Switch):
         assertIsFile(self.sw_json)
         assertIsFile(self.sw_p4info)
 
-        if 'files' in self.model_config:
+        if self.model_config['p4'] == 'no_inference':
+            self.models = None
+        else:
+            # TODO : simplify next line
+            # we no longer have more than 1 models per switch
+            # also, do same for convert_RF_and_populate_tables.py
             self.models = [*map(lambda m: os.path.join(self.model_dir, m), self.model_config['files'])]
             for path in self.models:
                 assertIsFile(path)
-        else:
-            self.models = None
 
         self.device_id = self.get_device_id()
         self.grpc_port, self.thrift_port = self.get_ports()
