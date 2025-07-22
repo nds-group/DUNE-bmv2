@@ -130,20 +130,28 @@ class Dune(Topo, ABC):
             self.addLink(nodes[0], nodes[1])
 
         for path in self.topo['paths']:
-            for node1, node2 in itertools.pairwise(self.topo['paths'][path]):
-                nodeInfo1 = self.nodeInfo(node1)
-                nodeInfo2 = self.nodeInfo(node2)
-                port1, port2 = self.port(node1, node2)
-                if not self.isSwitch(node1) and self.isSwitch(node2):
-                    if nodeInfo2['ingress_port_to_mpls'] is None:
-                        nodeInfo2['ingress_port_to_mpls'] = {}
-                    nodeInfo2['ingress_port_to_mpls'][port2] = path
-                if self.isSwitch(node1):
-                    if nodeInfo1['mpls_to_egress_port'] is None:
-                        nodeInfo1['mpls_to_egress_port'] = {}
-                    nodeInfo1['mpls_to_egress_port'][path] = port1
-                self.setNodeInfo(node1, nodeInfo1)
-                self.setNodeInfo(node2, nodeInfo2)
+            self.processPathForwardingInfo(path)
+
+    def processPathForwardingInfo(self, path):
+        for node1, node2 in itertools.pairwise(self.topo['paths'][path]):
+            port1, port2 = self.port(node1, node2)
+            if not self.isSwitch(node1) and self.isSwitch(node2):
+                # Ingress switch
+                self.updateSwitchForwardingInfo(
+                        node2, 'ingress_port_to_mpls', port2, path
+                        )
+            if self.isSwitch(node1):
+                # Every other ones
+                self.updateSwitchForwardingInfo(
+                        node1, 'mpls_to_egress_port', path, port1
+                        )
+
+    def updateSwitchForwardingInfo(self, node, info_key, key, value):
+        nodeInfo = self.nodeInfo(node)
+        if nodeInfo[info_key] is None:
+            nodeInfo[info_key] = {}
+        nodeInfo[info_key][key] = value
+        self.setNodeInfo(node, nodeInfo)
 
 
 class DuneJsonTopo(Dune):

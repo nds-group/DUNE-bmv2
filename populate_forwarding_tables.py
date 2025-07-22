@@ -6,24 +6,26 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
-    for port in ingress_port_to_mpls:
-        mpls = ingress_port_to_mpls[port]
-        entry = p4.TableEntry('DuneIngress.Forwarding.TableIngressPortToMPLS')(
-                action='DuneIngress.Forwarding.SetMplsLabel'
-                )
-        entry.match['std_meta.ingress_port'] = port
-        entry.action['label'] = mpls
-        entry.priority = 0
-        entry.insert()
-    for mpls in mpls_to_egress_port:
-        port = mpls_to_egress_port[mpls]
-        entry = p4.TableEntry('DuneIngress.Forwarding.TableMPLSToEgressPort')(
-                action='DuneIngress.Forwarding.SetEgressPort'
-                )
-        entry.match['hdr.dune.mpls_label'] = mpls
-        entry.action['port'] = str(port)
-        entry.priority = 0
-        entry.insert()
+    if ingress_port_to_mpls is not None:
+        for port in ingress_port_to_mpls:
+            mpls = ingress_port_to_mpls[port]
+            entry = p4.TableEntry('DuneIngress.Forwarding.TableIngressPortToMPLS')(
+                    action='DuneIngress.Forwarding.SetMplsLabel'
+                    )
+            entry.match['std_meta.ingress_port'] = port
+            entry.action['label'] = mpls
+            entry.priority = 0
+            entry.insert()
+    if mpls_to_egress_port is not None:
+        for mpls in mpls_to_egress_port:
+            port = mpls_to_egress_port[mpls]
+            entry = p4.TableEntry('DuneIngress.Forwarding.TableMPLSToEgressPort')(
+                    action='DuneIngress.Forwarding.SetEgressPort'
+                    )
+            entry.match['hdr.dune.mpls_label'] = mpls
+            entry.action['port'] = str(port)
+            entry.priority = 0
+            entry.insert()
 
 
 def parse_args():
