@@ -40,8 +40,8 @@ MN_CUSTOM_CLASSES := $(shell find $(MN_DIR) -type f -name '*.py')
 MN_CUSTOM := --custom=$(call join_with_comma,$(MN_CUSTOM_CLASSES))
 
 
-TOPOLOGY := configs/topos/topo_no_populate.json
-MODELS := configs/models/model_no_infer.json
+TOPOLOGY := configs/topos/topo_ton.json
+MODELS := configs/models/ton.json
 MODELS_DIR := ./models
 TOPO_ARGS := topo=$(TOPOLOGY) \
 			 models=$(MODELS) \
