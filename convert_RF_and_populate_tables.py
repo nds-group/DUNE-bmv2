@@ -333,21 +333,20 @@ def upload_model(model, feature_offset, code_table_offset, index):
 
     try:
         logging.info('Attempting to populate a voting table')
-        if index == 0:
-            for i in range(1, 3):
-                for j in range(1, 3):
-                    for k in range(1, 3):
-                        if (i != j) & (j != k) & (i != k):
-                            pass
-                        else:
-                            entry = p4.TableEntry("InferenceModel.VotingTable")(
-                                action="InferenceModel.SetVotingResult"
-                            )
-                            entry.match["voting_classes.class0"] = str(i)
-                            entry.match["voting_classes.class1"] = str(j)
-                            entry.match["voting_classes.class2"] = str(k)
-                            entry.action["vote_result"] = str(mode([i, j, k]))
-                            entry.insert()
+        for i in range(1, 3):
+            for j in range(1, 3):
+                for k in range(1, 3):
+                    if (i != j) & (j != k) & (i != k):
+                        pass
+                    else:
+                        entry = p4.TableEntry("InferenceModel.VotingTable")(
+                            action="InferenceModel.SetVotingResult"
+                        )
+                        entry.match["voting_classes.class0"] = str(i)
+                        entry.match["voting_classes.class1"] = str(j)
+                        entry.match["voting_classes.class2"] = str(k)
+                        entry.action["vote_result"] = str(mode([i, j, k]))
+                        entry.insert()
         logging.info('A voting table was populated')
     except p4.UserError as e:
         logging.debug(e)

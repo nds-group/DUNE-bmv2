@@ -288,7 +288,7 @@ control InferenceModel(
             codewords.codeword0_11: ternary;
         }
         actions = {SetClass0; @defaultonly SetClass0ToUnknown;}
-        size = 41;
+        size = 129;
         const default_action = SetClass0ToUnknown();
     }
 
