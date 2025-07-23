@@ -267,6 +267,11 @@ control InferenceModel(
         CodeTable2.apply();
 
         VotingTable.apply();
+
+        class += 5;
+        if (8 == class) {
+            class = UNKNOWN_FLOW_CLASS;
+        }
     }
 }
 

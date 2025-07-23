@@ -331,6 +331,11 @@ control InferenceModel(
         TableFeature11.apply();
 
         CodeTable0.apply();
+
+        class += 1;
+        if (5 == class) {
+            class = UNKNOWN_FLOW_CLASS;
+        }
     }
 }
 
