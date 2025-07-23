@@ -30,8 +30,8 @@ In the Bmv2 implementation :
     Combining this with what is stated above we have :
     | Cluster ID | New output classes IDs | Offset |
     |-|-|-|
-    |CL0|6,7,(8=>0)|+5|
-    |CL1|1,(2=>0)|+0|
-    |CL2|5,(6=>0)|+4|
-    |CL3|2,3,4,(5=>0)|+1|
+    |CL0|6,7,(UNKNOWN\_CLASS)|+5|
+    |CL1|1,(UNKNOWN\_CLASS)|+0|
+    |CL2|5,(UNKNOWN\_CLASS)|+4|
+    |CL3|2,3,4,(UNKNOWN\_CLASS)|+1|
 
