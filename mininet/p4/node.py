@@ -61,9 +61,6 @@ class P4SimpleSwitchGRPC(Switch):
 
     def __init__(self, name, model_config, model_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         Switch.__init__(self, name, **kwargs)
-        # TODO :
-        # Either add handling for missing config here or during model
-        # assignment with the ILP
         assert model_config is not None, 'No model config provided'
         assertIsDir(model_dir)
         assertIsDir(objects_dir)
@@ -83,9 +80,15 @@ class P4SimpleSwitchGRPC(Switch):
         assertIsFile(self.sw_json)
         assertIsFile(self.sw_p4info)
 
-        self.models = [*map(lambda m: os.path.join(self.model_dir, m), self.model_config['files'])]
-        for path in self.models:
-            assertIsFile(path)
+        if self.model_config['p4'] == 'no_inference':
+            self.models = None
+        else:
+            # TODO : simplify next line
+            # we no longer have more than 1 models per switch
+            # also, do same for convert_RF_and_populate_tables.py
+            self.models = [*map(lambda m: os.path.join(self.model_dir, m), self.model_config['files'])]
+            for path in self.models:
+                assertIsFile(path)
 
         self.device_id = self.get_device_id()
         self.grpc_port, self.thrift_port = self.get_ports()
@@ -169,12 +172,15 @@ class P4SimpleSwitchGRPC(Switch):
         return self.controller_is_connected
 
     def populate_tables(sw):
-        args = ['python', 'convert_RF_and_populate_tables.py']
-        args += ['--p4info', sw.sw_p4info]
-        args += ['--json', sw.sw_json]
-        args += ['--grpc-port', str(sw.grpc_port)]
-        args += ['--device-id', str(sw.device_id)]
-        args += ['--models'] + sw.models
+        if sw.models is not None:
+            args = ['python', 'convert_RF_and_populate_tables.py']
+            args += ['--p4info', sw.sw_p4info]
+            args += ['--json', sw.sw_json]
+            args += ['--grpc-port', str(sw.grpc_port)]
+            args += ['--device-id', str(sw.device_id)]
+            args += ['--models'] + sw.models
+        else:
+            args = ['echo', '"The inference pipeline is disabled in this switch"']
 
         log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
         args += ['>', log_file, '2>&1']
@@ -212,6 +218,7 @@ class P4Controller(Controller):
         self.start_cmd = ' '.join(args)
 
     def start(self):
+        # TODO : actually start
         return
         assert not P4SimpleSwitchGRPC.is_port_listening(self.port)
 
@@ -219,6 +226,7 @@ class P4Controller(Controller):
         self.cmd(self.start_cmd + ' > output 2>&1 &')
 
     def stop(self):
+        # TODO : actually stop
         return
         self.cmd(f'pkill -f "{self.start_cmd}"')
 
