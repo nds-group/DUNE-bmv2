@@ -70,6 +70,7 @@ struct FlowDigest_t {
     bit<16> src_port;
     bit<16> dst_port;
     IPv4Protocol protocol;
+    mpls_label_t mpls_label;
     Class_t flow_class;
     RegIdx_t register_index;
 }

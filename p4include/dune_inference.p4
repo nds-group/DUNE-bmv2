@@ -170,6 +170,7 @@ control Inference(
                     meta.src_port,
                     meta.dst_port,
                     hdr.ipv4.protocol,
+                    hdr.dune.mpls_label,
                     hdr.dune.flow_class,
                     hashes.reg_idx
                 });
@@ -220,6 +221,7 @@ control Inference(
                         meta.src_port,
                         meta.dst_port,
                         hdr.ipv4.protocol,
+                        hdr.dune.mpls_label,
                         class,
                         hashes.reg_idx
                     });
