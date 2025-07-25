@@ -7,9 +7,7 @@
 #define ENABLE_INFERENCE 1
 #endif
 
-#ifndef NO_MPLS_LABEL
 #define NO_MPLS_LABEL 0
-#endif
 
 #if ENABLE_INFERENCE
 #include "dune_inference.p4"
