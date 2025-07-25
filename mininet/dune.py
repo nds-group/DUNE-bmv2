@@ -121,11 +121,37 @@ class Dune(Topo, ABC):
                     model_dir=self.models_dir,
                     objects_dir=self.objects_dir,
                     log_dir=self.log_dir,
-                    pcap_dir=self.pcap_dir
+                    pcap_dir=self.pcap_dir,
+                    ingress_port_to_mpls=None,
+                    mpls_to_egress_port=None,
                 )
 
         for nodes in self.topo['links']:
             self.addLink(nodes[0], nodes[1])
+
+        for path in self.topo['paths']:
+            self.processPathForwardingInfo(path)
+
+    def processPathForwardingInfo(self, path):
+        for node1, node2 in itertools.pairwise(self.topo['paths'][path]):
+            port1, port2 = self.port(node1, node2)
+            if not self.isSwitch(node1) and self.isSwitch(node2):
+                # Ingress switch
+                self.updateSwitchForwardingInfo(
+                        node2, 'ingress_port_to_mpls', port2, path
+                        )
+            if self.isSwitch(node1):
+                # Every other ones
+                self.updateSwitchForwardingInfo(
+                        node1, 'mpls_to_egress_port', path, port1
+                        )
+
+    def updateSwitchForwardingInfo(self, node, info_key, key, value):
+        nodeInfo = self.nodeInfo(node)
+        if nodeInfo[info_key] is None:
+            nodeInfo[info_key] = {}
+        nodeInfo[info_key][key] = value
+        self.setNodeInfo(node, nodeInfo)
 
 
 class DuneJsonTopo(Dune):

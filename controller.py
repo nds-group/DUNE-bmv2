@@ -39,6 +39,7 @@ DuneDigest = namedtuple('DuneDigest',
                             'src_port',
                             'dst_port',
                             'protocol',
+                            'mpls_label',
                             'flow_class',
                             'register_index',
                         ]
