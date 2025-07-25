@@ -7,9 +7,11 @@ logging.basicConfig(level=logging.INFO)
 
 def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
     if ingress_port_to_mpls is not None:
+        table_name = 'DuneIngress.Forwarding.TableIngressPortToMPLS'
+        logging.info(f'Populating table : {table_name}')
         for port in ingress_port_to_mpls:
             mpls = ingress_port_to_mpls[port]
-            entry = p4.TableEntry('DuneIngress.Forwarding.TableIngressPortToMPLS')(
+            entry = p4.TableEntry(table_name)(
                     action='DuneIngress.Forwarding.SetMplsLabel'
                     )
             entry.match['std_meta.ingress_port'] = port
@@ -17,9 +19,11 @@ def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
             entry.priority = 0
             entry.insert()
     if mpls_to_egress_port is not None:
+        table_name = 'DuneIngress.Forwarding.TableMPLSToEgressPort'
+        logging.info(f'Populating table : {table_name}')
         for mpls in mpls_to_egress_port:
             port = mpls_to_egress_port[mpls]
-            entry = p4.TableEntry('DuneIngress.Forwarding.TableMPLSToEgressPort')(
+            entry = p4.TableEntry(table_name)(
                     action='DuneIngress.Forwarding.SetEgressPort'
                     )
             entry.match['hdr.dune.mpls_label'] = mpls

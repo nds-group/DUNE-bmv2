@@ -19,6 +19,9 @@ def assertIsFile(path):
 def assertIsDir(path):
     assert isdir(path), path + ' was not found or is a file'
 
+def loadJsonFile(path):
+    with open(path, 'r') as file:
+        return json.load(file)
 
 class P4Host(Host):
     def config(self, **_params):
@@ -158,9 +161,9 @@ class P4SimpleSwitchGRPC(Switch):
         processes = []
         for sw in switches:
             ps = multiprocessing.Process(
-                    target=cls.populate_tables,
-                    args=[sw]
-                )
+                target=cls.populate_tables,
+                args=[sw]
+            )
             processes.append(ps)
             ps.start()
         try:
@@ -228,12 +231,18 @@ class P4Controller(Controller):
     ctrl_path = 'controller.py'
     assertIsFile(ctrl_path)
 
-    def __init__(self, name, **kwargs):
+    def __init__(self, name, topo, **kwargs):
         Controller.__init__(self, name, **kwargs)
+        assertIsFile(topo)
+        self.topo = loadJsonFile(topo)
+        assert self.topo
 
         args = ['python', P4Controller.ctrl_path]
         args += ['--ip', str(self.ip)]
         args += ['--port', str(self.port)]
+        topo_json = json.dumps(self.topo)
+        # ToDO: maybe self.topo['paths'] is enough...
+        args += ['--topo', f"'{topo_json}'"]
 
         self.start_cmd = ' '.join(args)
 

@@ -14,7 +14,7 @@ import threading
 import socket
 import signal
 
-from logger import thread_entry, setup_thread_logger, get_global_logger
+from logger import thread_entry, get_global_logger
 
 logger = get_global_logger()
 logger.info("Starting P4Runtime client")
@@ -145,7 +145,7 @@ def send_digest_ack(digest_id, list_id, request_queue):
     request_queue.put(ack)  
 
 
-def handle_dune_digest(dune_digest, sw):
+def insert_flow_table(dune_digest, sw, logger):
     client = sw.thrift_client
     cxt_id = 0
 
@@ -171,46 +171,57 @@ def handle_dune_digest(dune_digest, sw):
         action_data,
         options
     )
+    logger.info(f"[!] Inserted entry into IsFlowClassKnownLocally table")
+    for key in match_keys:
+        logger.debug(f"      Match key: {key.exact.value.hex()}")
+
+def clear_registers(dune_digest, sw, logger):
+    client = sw.thrift_client
+    cxt_id = 0
 
     for register in sw.registers:
         client.bm_register_write(cxt_id, register, dune_digest.register_index, 0)
+        logger.info(f"[!] Cleared register {register} at index {dune_digest.register_index}")
+
+def get_path_switches_by_mpls_label(mpls_label):
+    return topo['paths'][mpls_label]
 
 
-def listen_for_digests(digest_name, sw, logger):
-    logger.info(f"Listening for digest messages: {digest_name}")
-    stream = sw.stream
+def process_digest_entries(sw, logger):
+    response = next(sw.stream)
     request_queue = sw.queue
-    device_id = sw.device_id
     field_list = sw.field_list
-    thrift_client = sw.thrift_client
-
-    while not shutdown_event.is_set():
-        try:
-            response = next(stream)
-        except StopIteration:
-            break
-        except Exception as e:
-            logger.error(f"[!] Error receiving stream message: {e}")
-            break
-
-        if response.HasField("digest"):
-            digest = response.digest
-            logger.info(f"[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
-
-            for entry in digest.data:
-                dune_digest = get_DuneDigest(entry, field_list, logger)
-                handle_dune_digest(dune_digest, sw)
-                logger.info(f"[✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
-                logger.debug("      Digest Content: %s", dune_digest)
-
-            send_digest_ack(digest_id=digest.digest_id, list_id=digest.list_id, request_queue=request_queue)
-            logger.info("[✓] Sent digest_ack\n")
 
 
-        else:
-            logger.info("Other message:", response)
+    if response.HasField("digest"):
+        digest = response.digest
+        logger.info(f"[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
 
-def controller_thread(grpc_port, thrift_port, device_id):
+        for entry in digest.data:
+            dune_digest = get_DuneDigest(entry, field_list, logger)
+            # TODO:
+            # get list of switches related to the mpls label in the digest,
+            try:
+                path_switches = get_path_switches_by_mpls_label(dune_digest.mpls_label)
+            except KeyError:
+                logger.error(f"[!] No path found for MPLS label {dune_digest.mpls_label}. Skipping digest.")
+                raise RuntimeError(f"No path found for MPLS label {dune_digest.mpls_label}")
+            # and put the digest in the queue of each switch
+            for other_sw in path_switches:
+                queues[(other_sw.grpc_port, other_sw.thrift_port, other_sw.device_id)].put(dune_digest)
+            insert_flow_table(dune_digest, sw, logger)
+            clear_registers(dune_digest, sw, logger)
+            logger.info(f"[✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
+            logger.debug("      Digest Content: %s", dune_digest)
+
+        send_digest_ack(digest_id=digest.digest_id, list_id=digest.list_id, request_queue=request_queue)
+        logger.info("[✓] Sent digest_ack\n")
+
+
+    else:
+        logger.info("Other message:", response)
+
+def controller_thread(grpc_port, thrift_port, device_id, logger):
     digest_name = "FlowDigest_t"
     stub, stream, q = connect_to_switch(address=f'127.0.0.1:{grpc_port}', device_id=int(device_id))
     p4info = get_p4info(stub, device_id=int(device_id))
@@ -234,19 +245,41 @@ def controller_thread(grpc_port, thrift_port, device_id):
                 thrift_client=thrift_client,
                 registers=registers
          )
-    thread_entry(listen_for_digests, f'c{sw.device_id}', digest_name, sw)
+    logger.info(f"Listening for digest messages: {digest_name}")
+    while not shutdown_event.is_set():
+        try:
+            external_dune_digest = queues[(grpc_port, thrift_port, device_id)].get()
+            insert_flow_table(external_dune_digest, sw, logger)
+            clear_registers(external_dune_digest, sw, logger)
+        except queue.Empty:
+            continue
+        try:
+            process_digest_entries(sw, logger)
+        except StopIteration:
+            break
+        except RuntimeError:
+            shutdown_event.set()
+            break
+        except Exception as e:
+            logger.error(f"[!] Error receiving stream message: {e}")
+            break
+            
+            
 
+topo = None
 threads = {}
+queues = {}
 shutdown_event = threading.Event()
 
 def add_controller_thread(grpc_port, thrift_port, device_id):
     key = (grpc_port, thrift_port, device_id)
     assert key not in threads, 'Controller thread already exists for this key'
     thread = threading.Thread(
-            target=controller_thread,
-            args=key,
+            target=thread_entry,
+            args=(controller_thread, f'c{device_id}', grpc_port, thrift_port, device_id)
             )
     threads[key] = thread
+    queues[key] = queue.Queue()
     thread.start()
 
 def handle_new_connection(conn, addr):
@@ -305,6 +338,7 @@ def parse_args():
 
     parser.add_argument('--ip', required=True)
     parser.add_argument('--port', required=True, type=int)
+    parser.add_argument('--topo', required=True)
 
     args = parser.parse_args()
     return args
@@ -318,6 +352,7 @@ def main():
     shutdown_event.clear()
 
     print('Starting the server', flush=True)
+    topo = json.loads(args.topo)
     run_server(args.ip, args.port)
 
 

@@ -94,7 +94,7 @@ class Dune(Topo, ABC):
         pass
 
 
-    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
+    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir):
         assertIsFile(topo)
         assertIsFile(models)
         assertIsDir(models_dir)
@@ -102,7 +102,7 @@ class Dune(Topo, ABC):
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
-        self.set_topo(topo, **kwargs)
+        self.set_topo(topo)
         assert self.topo
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
