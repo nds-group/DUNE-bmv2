@@ -18,7 +18,7 @@ control Forwarding(
 {
     action nop() {}
 
-    action SetMplsLabel(mpls_label_t label) {
+    action SetMplsLabel(MplsLabel_t label) {
         hdr.dune.mpls_label = label;
     }
 

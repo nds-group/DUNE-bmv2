@@ -14,7 +14,7 @@
 #include "network_headers.p4"
 
 typedef bit<8> Class_t;
-typedef bit<16> mpls_label_t;
+typedef bit<16> MplsLabel_t;
 
 #define UNKNOWN_FLOW_CLASS ((Class_t) 0)
 
@@ -27,7 +27,7 @@ header Dune_h {
     Class_t flow_class;
     bool collision;
     PktCount_t pkt_count;
-    mpls_label_t mpls_label;
+    MplsLabel_t mpls_label;
     bit<7> _padding_;
 }
 
@@ -70,7 +70,7 @@ struct FlowDigest_t {
     bit<16> src_port;
     bit<16> dst_port;
     IPv4Protocol protocol;
-    mpls_label_t mpls_label;
+    MplsLabel_t mpls_label;
     Class_t flow_class;
     RegIdx_t register_index;
 }
