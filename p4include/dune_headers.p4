@@ -27,15 +27,16 @@ enum bit<1> ClassType_t {
 #define PKT_CNT_BIT_WIDTH 32
 typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
+typedef bit<6> ModelId_t;
+#define NO_MODEL_ID ((ModelId_t) 0)
+
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
     ClassType_t class_type;
     Class_t class;
     bool collision;
     PktCount_t pkt_count;
-    /* TODO : */
-    // Forwarding
-    bit<6> _padding_;
+    ModelId_t model_id;
 }
 
 struct Headers_t {

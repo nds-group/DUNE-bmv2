@@ -56,6 +56,7 @@ control GetStatefullFeaturesDefaultValues(
 }
 
 #define INFERENCE_POINT 3
+#define MODEL_ID 3
 
 struct Features_t {
     bit<16> dst_port;

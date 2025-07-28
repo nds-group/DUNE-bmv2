@@ -115,6 +115,7 @@ control GetStatefullFeaturesDefaultValues(
 }
 
 #define INFERENCE_POINT 3
+#define MODEL_ID 2
 
 struct Features_t {
     bit<16> ip_len;

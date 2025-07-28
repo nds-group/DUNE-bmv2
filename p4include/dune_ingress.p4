@@ -37,7 +37,7 @@ control DuneIngress(
                 class = UNKNOWN_CLASS,
                 collision = false,
                 pkt_count = 0,
-                _padding_ = 0
+                model_id = NO_MODEL_ID,
             };
             hdr.ethernet.ether_type = EtherType.DUNE;
         }

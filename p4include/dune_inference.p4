@@ -120,6 +120,14 @@ control GetPktCount(
     #error "The inference point of the model must be at least 1"
 #endif
 
+// The MODEL_ID is used to ensure correct execution of the models
+// with respect to the dependencies
+#ifndef MODEL_ID
+    #error "The model id is not defined"
+#elif MODEL_ID < 1
+    #error "The model id must be at least 1"
+#endif
+
 control Inference(
     inout Headers_t hdr,
     inout Metadata_t meta,
@@ -142,7 +150,12 @@ control Inference(
 
     bool type_is_fl_hdr;
     bool class_is_known_hdr;
+
     apply {
+        if (hdr.dune.model_id != MODEL_ID - 1) {
+            return;
+        }
+
         class_type = UNKNOWN_CLASS_TYPE;
         class = UNKNOWN_CLASS;
         collision = false;
@@ -168,12 +181,7 @@ control Inference(
                     GetPktCount.apply(hashes, pkt_count);
                     if (pkt_count <= INFERENCE_POINT) {
                         UpdateAndGetStatefullFeatures.apply(
-                            hdr,
-                            std_meta,
-                            hashes,
-                            pkt_count,
-                            is_new_flow,
-                            statefull_features
+                            hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
                         );
                     }
                 }
@@ -216,7 +224,7 @@ control Inference(
 
         // Load results from header to not overwrite them
         if (hdr.dune.class != UNKNOWN_CLASS) {
-           class_type = hdr.dune.class_type;
+            class_type = hdr.dune.class_type;
             class = hdr.dune.class;
         }
 

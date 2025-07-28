@@ -45,6 +45,7 @@ control GetStatefullFeaturesDefaultValues(
 }
 
 #define INFERENCE_POINT 0
+#define MODEL_ID 0
 
 control InferenceModel(
     in Headers_t hdr,

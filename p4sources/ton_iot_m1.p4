@@ -58,6 +58,7 @@ control GetStatefullFeaturesDefaultValues(
 }
 
 #define INFERENCE_POINT 2
+#define MODEL_ID 1
 
 struct Features_t {
     bit<8> ip_ttl;
