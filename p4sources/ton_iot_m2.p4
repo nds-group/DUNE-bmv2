@@ -269,7 +269,7 @@ control InferenceModel(
         class = classe;
     }
     action SetClass0ToUnknown() {
-        class = UNKNOWN_FLOW_CLASS;
+        class = UNKNOWN_CLASS;
     }
 
     table CodeTable0{
@@ -334,7 +334,7 @@ control InferenceModel(
 
         class += 1;
         if (5 == class) {
-            class = UNKNOWN_FLOW_CLASS;
+            class = UNKNOWN_CLASS;
         }
     }
 }

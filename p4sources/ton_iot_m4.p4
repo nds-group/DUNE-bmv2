@@ -229,7 +229,7 @@ control InferenceModel(
         class = vote_result;
     }
     action SetVotingResultToUnknown() {
-        class = UNKNOWN_FLOW_CLASS;
+        class = UNKNOWN_CLASS;
     }
     table VotingTable {
         key = {
@@ -270,7 +270,7 @@ control InferenceModel(
 
         class += 5;
         if (8 == class) {
-            class = UNKNOWN_FLOW_CLASS;
+            class = UNKNOWN_CLASS;
         }
     }
 }
