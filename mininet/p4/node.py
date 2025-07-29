@@ -219,11 +219,11 @@ class P4SimpleSwitchGRPC(Switch):
             s.connect((self.controller.ip, self.controller.port))
             data = f'{self.grpc_port},{self.thrift_port},{self.device_id}'
             s.sendall(data.encode())
-            print('Sending data')
+            print('Registering switch', self.name, 'with controller at', self.controller.ip, ':', self.controller.port)
 
             ack = s.recv(1024).decode()
             self.controller_is_connected = ack == 'ACK'
-            print('Received ack :', ack)
+            print(f'Received ack from controller', self.controller.ip, ':', self.controller.port, 'for switch', self.name)
 
 switches = { 'p4simpleswitchgrpc' : P4SimpleSwitchGRPC }
 

@@ -5,7 +5,7 @@ import traceback
 
 # === CONFIGURATION ===
 LOG_DIR = "logs"
-GLOBAL_LOG_NAME = "p4runtime_client"
+GLOBAL_LOG_NAME = "controller_main"
 GLOBAL_LOG_PATH = os.path.join(LOG_DIR, f"{GLOBAL_LOG_NAME}.log")
 
 # === INIT ===

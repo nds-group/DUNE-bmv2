@@ -281,28 +281,29 @@ def add_controller_thread(grpc_port, thrift_port, device_id):
     threads[key] = thread
     queues[key] = queue.Queue()
     thread.start()
+    logger.info(f'Started controller thread for device {device_id} on ports {grpc_port}, {thrift_port}')
 
 def handle_new_connection(conn, addr):
-    print('New connection', flush=True)
+    logger.debug('New connection from %s:%s to register a switch', addr[0], addr[1])
     try:
         data = conn.recv(1024).decode()
         if data:
-            print('Received data', flush=True)
+            logger.debug('Received registration data')
             grpc_port, thrift_port, device_id = data.strip().split(',')
             ack = 'ACK'
-            print('Sending ack', flush=True)
+            logger.debug(f'Sending acknowledgment of registration data to switch {device_id}')
             conn.sendall(ack.encode())
             add_controller_thread(grpc_port, thrift_port, device_id)
     except Exception as e:
-        print(e, flush=True)
+        logger.info(e)
     finally:
-        print('Closing connection', flush=True)
+        logger.debug('Closing connection from %s:%s', addr[0], addr[1])
         conn.close()
 
 
 def run_server(ip, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print('Binding', flush=True)
+    logger.info('Binding')
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((ip, port))
     s.settimeout(1.0)
@@ -312,7 +313,8 @@ def run_server(ip, port):
 
     while not shutdown_event.is_set():
         try:
-            print('Listening', flush=True)
+            # TODO: check if all the switches have registered and break if so
+            # logger.info('Listening')
             conn, addr = s.accept()
             handle_new_connection(conn, addr)
         except socket.timeout:
@@ -321,13 +323,13 @@ def run_server(ip, port):
 
 
 def shutdown(sig, frame):
-    print('WOW shut down SIGINT', flush=True)
+    logger.info('WOW shut down SIGINT')
     shutdown_event.set()
     for thread in threads.values():
         thread.join()
 
 def shutdown2(sig, frame):
-    print('WOW shut down SIGTERM', flush=True)
+    logger.info('WOW shut down SIGTERM')
     shutdown_event.set()
     for thread in threads.values():
         thread.join()
@@ -351,7 +353,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown2)
     shutdown_event.clear()
 
-    print('Starting the server', flush=True)
+    logger.info('Starting the server')
     topo = json.loads(args.topo)
     run_server(args.ip, args.port)
 
