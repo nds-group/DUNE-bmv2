@@ -17,7 +17,7 @@ import signal
 from logger import thread_entry, get_global_logger
 
 logger = get_global_logger()
-logger.info("Starting P4Runtime client")
+logger.info("Starting controller.py")
 
 Switch = namedtuple('Switch', 
                     [
@@ -73,6 +73,7 @@ def connect_to_switch(address, device_id):
 
     # Wait for arbitration response
     response = next(stream)
+    logger.debug(f"Received stream message: {response}")
     assert response.HasField("arbitration")
     logger.info("Connected to switch with device_id = %s", device_id)
 
@@ -188,10 +189,11 @@ def get_path_switches_by_mpls_label(mpls_label):
 
 
 def process_digest_entries(sw, logger):
+    logger.debug('ENTERING PROCESS DIGEST 1')
     response = next(sw.stream)
+    logger.debug('ENTERING PROCESS DIGEST 2')
     request_queue = sw.queue
     field_list = sw.field_list
-
 
     if response.HasField("digest"):
         digest = response.digest
@@ -247,15 +249,19 @@ def controller_thread(grpc_port, thrift_port, device_id, logger):
          )
     logger.info(f"Listening for digest messages: {digest_name}")
     while not shutdown_event.is_set():
-        try:
-            external_dune_digest = queues[(grpc_port, thrift_port, device_id)].get()
+        queue = queues[(grpc_port, thrift_port, device_id)]
+        if (not queue.empty()):
+            external_dune_digest = queue.get()
+            logger.debug(f"Received digest from queue: {external_dune_digest}")
             insert_flow_table(external_dune_digest, sw, logger)
             clear_registers(external_dune_digest, sw, logger)
-        except queue.Empty:
-            continue
+
+        logger.debug(f"Controller thread for device {device_id} on ports {grpc_port}, {thrift_port} is waiting for digest messages")
         try:
             process_digest_entries(sw, logger)
+            logger.debug('WOW FINISHED PROCESS DIGEST')
         except StopIteration:
+            logger.info("[!] Stream closed, exiting thread")
             break
         except RuntimeError:
             shutdown_event.set()
@@ -264,6 +270,7 @@ def controller_thread(grpc_port, thrift_port, device_id, logger):
             logger.error(f"[!] Error receiving stream message: {e}")
             break
             
+    logger.debug(f"Controller thread for device {device_id} on ports {grpc_port}, {thrift_port} is shutting down")
             
 
 topo = None
@@ -303,7 +310,7 @@ def handle_new_connection(conn, addr):
 
 def run_server(ip, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    logger.info('Binding')
+    logger.info('Server binding to %s:%s', ip, port)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((ip, port))
     s.settimeout(1.0)
