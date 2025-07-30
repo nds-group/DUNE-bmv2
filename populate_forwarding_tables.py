@@ -52,7 +52,6 @@ def main():
         device_id=args.device_id,
         grpc_addr=f"0.0.0.0:{args.grpc_port}",
         election_id=(0, 1),  # (high, low)
-        config=p4.FwdPipeConfig(args.p4info, args.json),
         verbose=False,
     )
 
@@ -60,6 +59,7 @@ def main():
             json.loads(args.ingress_port_to_mpls),
             json.loads(args.mpls_to_egress_port),
             )
+
     p4.teardown()
 
 if __name__ == "__main__":
