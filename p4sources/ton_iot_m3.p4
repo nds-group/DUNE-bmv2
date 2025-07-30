@@ -56,6 +56,7 @@ control GetStatefullFeaturesDefaultValues(
 }
 
 #define INFERENCE_POINT 3
+#define MODEL_ID 3
 
 struct Features_t {
     bit<16> dst_port;
@@ -148,7 +149,7 @@ control InferenceModel(
         class = classe;
     }
     action SetClass0ToUnknown() {
-        class = UNKNOWN_FLOW_CLASS;
+        class = UNKNOWN_CLASS;
     }
 
     table CodeTable0{
@@ -191,7 +192,7 @@ control InferenceModel(
 
         class += 4;
         if (6 == class) {
-            class = UNKNOWN_FLOW_CLASS;
+            class = UNKNOWN_CLASS;
         }
     }
 }

@@ -73,11 +73,11 @@ control DuneIngress(
             // Packet was not equiped with a DUNE header yet
             hdr.dune = {
                 ether_type = hdr.ethernet.ether_type,
-                flow_class = UNKNOWN_FLOW_CLASS,
-                collision = false,
+                class_type = UNKNOWN_CLASS_TYPE,
+                class = UNKNOWN_CLASS,
+                collision = 0,
+                model_id = NO_MODEL_ID,
                 mpls_label = 0,
-                pkt_count = 0,
-                _padding_ = 0
             };
             hdr.ethernet.ether_type = EtherType.DUNE;
         }

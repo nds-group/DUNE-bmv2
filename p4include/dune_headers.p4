@@ -16,19 +16,28 @@
 typedef bit<8> Class_t;
 typedef bit<16> MplsLabel_t;
 
-#define UNKNOWN_FLOW_CLASS ((Class_t) 0)
+enum bit<8> ClassType_t {
+    PL = 0, // Packet Level
+    FL = 1, // Flow Level
+}
+
+#define UNKNOWN_CLASS_TYPE ClassType_t.PL
+#define UNKNOWN_CLASS ((Class_t) 0)
 
 // Use typedef instead of type to for comparaisons without casting
 #define PKT_CNT_BIT_WIDTH 32
 typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
+typedef bit<8> ModelId_t;
+#define NO_MODEL_ID ((ModelId_t) 0)
+
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
-    Class_t flow_class;
-    bool collision;
-    PktCount_t pkt_count;
+    ClassType_t class_type;
+    Class_t class;
+    bit<8> collision;
+    ModelId_t model_id;
     MplsLabel_t mpls_label;
-    bit<7> _padding_;
 }
 
 struct Headers_t {
@@ -59,9 +68,6 @@ struct Metadata_t {
    // Ports with no regards to TCP or UDP
     bit<16> src_port;
     bit<16> dst_port;
-
-    Class_t flow_class;
-    /* TODO */
 }
 
 struct FlowDigest_t {
@@ -79,11 +85,5 @@ struct FlowDigest_t {
 // DUNE was initialy developped for Tofino so use the following
 // macro when converting models using time trained on Tofino to Bmv2.
 #define BMV2_TIME(T) (1000 * (T))
-
-enum InferencePointStatus_t {
-    BELOW_INFERENCE_POINT,
-    AT_INFERENCE_POINT,
-    AFTER_INFERENCE_POINT
-}
 
 #endif

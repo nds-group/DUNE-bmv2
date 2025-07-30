@@ -212,8 +212,6 @@ class P4SimpleSwitchGRPC(Switch):
         sw.cmd(populate_cmd)
 
     def advertise_to_controller(self):
-        self.controller_is_connected = True
-        return
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.controller.ip, self.controller.port))
             data = f'{self.grpc_port},{self.thrift_port},{self.device_id}'
@@ -232,7 +230,6 @@ class P4Controller(Controller):
 
     def __init__(self, name, **kwargs):
         Controller.__init__(self, name, **kwargs)
-        return
 
         args = ['python', P4Controller.ctrl_path]
         args += ['--ip', str(self.ip)]
@@ -241,16 +238,12 @@ class P4Controller(Controller):
         self.start_cmd = ' '.join(args)
 
     def start(self):
-        # TODO : actually start
-        return
         assert not P4SimpleSwitchGRPC.is_port_listening(self.port)
 
         # TODO : better logging
         self.cmd(self.start_cmd + ' > output 2>&1 &')
 
     def stop(self):
-        # TODO : actually stop
-        return
         self.cmd(f'pkill -f "{self.start_cmd}"')
 
 

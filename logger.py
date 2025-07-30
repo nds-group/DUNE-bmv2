@@ -21,7 +21,7 @@ formatter = logging.Formatter(
 )
 
 # File handler
-file_handler = logging.FileHandler(GLOBAL_LOG_PATH, mode='a')
+file_handler = logging.FileHandler(GLOBAL_LOG_PATH, mode='w')
 file_handler.setFormatter(formatter)
 global_logger.addHandler(file_handler)
 
@@ -45,7 +45,7 @@ def setup_thread_logger(thread_name):
     if not logger.handlers:
         # File-only handler for thread-specific log
         thread_log_path = os.path.join(LOG_DIR, f"{thread_name}.log")
-        fh = logging.FileHandler(thread_log_path, mode='a')
+        fh = logging.FileHandler(thread_log_path, mode='w')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 

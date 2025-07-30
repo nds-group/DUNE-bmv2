@@ -4,16 +4,17 @@
 #include "dune_headers.p4"
 
 control IsFlowClassKnownLocally(
-    inout Headers_t hdr,
-    inout Metadata_t meta
+    in Headers_t hdr,
+    in Metadata_t meta,
+    out Class_t class
 )
 {
     action MetaSetFlowClass(Class_t flow_class) {
-        meta.flow_class = flow_class;
+        class = flow_class;
     }
 
     action MetaSetUnkownFlowClass() {
-        meta.flow_class = UNKNOWN_FLOW_CLASS;
+        class = UNKNOWN_CLASS;
     }
 
     table FlowClass {
@@ -39,8 +40,8 @@ control IsFlowClassKnownLocally(
 
 control ComputeHashes(
     out Hash_t hashes,
-    inout Headers_t hdr,
-    inout Metadata_t meta
+    in Headers_t hdr,
+    in Metadata_t meta
 )
 {
     apply {
@@ -71,8 +72,8 @@ control ComputeHashes(
 
 control CheckCollisionAndNewFlow(
     in Hash_t hashes, 
-    inout Dune_h dune,
-    out bool new_flow
+    out bool collision,
+    out bool is_new_flow
 )
 {
     register<bit<1>>(NB_REG_ENTRIES) flow_id_used;
@@ -89,11 +90,11 @@ control CheckCollisionAndNewFlow(
         flow_id_used.read(used, hashes.reg_idx32);
         if ((bool)used) {
             flow_ids.read(flow_id, hashes.reg_idx32);
-            dune.collision = flow_id != hashes.flow_id;
-            new_flow = false;
+            collision = flow_id != hashes.flow_id;
+            is_new_flow = false;
         } else {
-            dune.collision = false;
-            new_flow = true;
+            collision = false;
+            is_new_flow = true;
             flow_ids.write(hashes.reg_idx32, hashes.flow_id);
         }
         UpdateUsedFlowIds();
@@ -119,23 +120,13 @@ control GetPktCount(
     #error "The inference point of the model must be at least 1"
 #endif
 
-control ResetFlowFeaturesIfInferencePointNotReached(
-    in PktCount_t pkt_count,
-    inout StatefullFeatures_t statefull_features,
-    out InferencePointStatus_t inference_point_status
-)
-{
-    apply {
-        if (pkt_count < INFERENCE_POINT) {
-            inference_point_status = InferencePointStatus_t.BELOW_INFERENCE_POINT;
-            GetStatefullFeaturesDefaultValues.apply(statefull_features);
-        } else if (pkt_count > INFERENCE_POINT) {
-            inference_point_status = InferencePointStatus_t.AFTER_INFERENCE_POINT;
-        } else {
-            inference_point_status = InferencePointStatus_t.AT_INFERENCE_POINT;
-        }
-    }
-}
+// The MODEL_ID is used to ensure correct execution of the models
+// with respect to the dependencies
+#ifndef MODEL_ID
+    #error "The model id is not defined"
+#elif MODEL_ID < 1
+    #error "The model id must be at least 1"
+#endif
 
 control Inference(
     inout Headers_t hdr,
@@ -144,94 +135,121 @@ control Inference(
 )
 {
     Hash_t hashes;
-
-    bool new_flow;
-    PktCount_t pkt_count;
     StatefullFeatures_t statefull_features;
+
+    register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
+    register<bit<1>>(NB_REG_ENTRIES) ControllerWasNotified;
+    bit<1> notified;
+
+    ClassType_t class_type;
     Class_t class;
 
-    InferencePointStatus_t inference_point_status;
-    register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
+    bool collision;
+    PktCount_t pkt_count;
+    bool is_new_flow;
+
+    bool type_is_fl_hdr;
+    bool class_is_known_hdr;
 
     apply {
-        // Check if flow is known and populate meta.flow_class
-        IsFlowClassKnownLocally.apply(hdr, meta);
-        if (UNKNOWN_FLOW_CLASS == meta.flow_class) {
-            ComputeHashes.apply(hashes, hdr, meta);
-            CheckCollisionAndNewFlow.apply(hashes, hdr.dune, new_flow);
-            if (UNKNOWN_FLOW_CLASS != hdr.dune.flow_class) {
-                // Flow is known by a previous switch but not locally
-                // TODO
-                // Can't remember what to do when colision is this specific case
-                // Send digest and clear registers (in controller, no clear if collision)
-                digest<FlowDigest_t>(1, {
-                    hdr.ipv4.src_addr,
-                    hdr.ipv4.dst_addr,
-                    meta.src_port,
-                    meta.dst_port,
-                    hdr.ipv4.protocol,
-                    hdr.dune.mpls_label,
-                    hdr.dune.flow_class,
-                    hashes.reg_idx
-                });
-            } else {
-                // Flow is neither know by a previous switch nor locally
-                if (!hdr.dune.collision) {
-                    GetPktCount.apply(hashes, pkt_count);
+        IsFlowClassKnownLocally.apply(hdr, meta, class); // TODO MAYBE : bring this outside of inference control ?
+        if (class != UNKNOWN_CLASS) {
+            hdr.dune.class_type = ClassType_t.FL;
+            hdr.dune.class = class;
+            return;
+        }
+        if (hdr.dune.model_id != MODEL_ID - 1) {
+            return;
+        } else {
+            hdr.dune.model_id = MODEL_ID;
+        }
+
+        class_type = UNKNOWN_CLASS_TYPE;
+        class = UNKNOWN_CLASS;
+        collision = false;
+        pkt_count = 0;
+
+        type_is_fl_hdr = hdr.dune.class_type == ClassType_t.FL;
+        class_is_known_hdr = hdr.dune.class != UNKNOWN_CLASS;
+
+        ComputeHashes.apply(hashes, hdr, meta);
+        GetStatefullFeaturesDefaultValues.apply(statefull_features);
+
+        // Updating the features of the flow
+        if (!(type_is_fl_hdr && class_is_known_hdr)) {
+            CheckCollisionAndNewFlow.apply(hashes, collision, is_new_flow);
+            if (!collision) {
+                // The flow ID doesn't colides with a previous one so we can track
+                // the number of packets we received from it and other features.
+                GetPktCount.apply(hashes, pkt_count);
+                if (pkt_count <= INFERENCE_POINT) {
                     UpdateAndGetStatefullFeatures.apply(
-                        hdr,
-                        std_meta,
-                        hashes,
-                        pkt_count,
-                        new_flow,
-                        statefull_features
+                        hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
                     );
-                } else {
-                    pkt_count = 0;
-                    GetStatefullFeaturesDefaultValues.apply(statefull_features);
-                }
-                // TODO MAYBE :
-                // Split  :
-                // - GetInferencePoint (in model file)
-                // - GetInferencePointStatus (here)
-                // - GetDefaultFlowFeaturesValues (move reset logic to ingress)
-                ResetFlowFeaturesIfInferencePointNotReached.apply(
-                    pkt_count,
-                    statefull_features,
-                    inference_point_status
-                );
-                if (inference_point_status == InferencePointStatus_t.AFTER_INFERENCE_POINT) {
-                    FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
-                } else {
-                    InferenceModel.apply(
-                        hdr,
-                        meta,
-                        std_meta,
-                        statefull_features,
-                        class
-                    );
-                }
-                // TODO :
-                // Inform the switch if the class different from UKNOWN
-                // Also, populate DUNE header
-                if (inference_point_status == InferencePointStatus_t.AT_INFERENCE_POINT) {
-                    digest<FlowDigest_t>(2, {
-                        hdr.ipv4.src_addr,
-                        hdr.ipv4.dst_addr,
-                        meta.src_port,
-                        meta.dst_port,
-                        hdr.ipv4.protocol,
-                        hdr.dune.mpls_label,
-                        class,
-                        hashes.reg_idx
-                    });
                 }
             }
+        }
+
+        // Reseting flow features if inference point not reached
+        if (MODEL_ID == 1) {
+            if (collision || (!collision && pkt_count < INFERENCE_POINT)) {
+                GetStatefullFeaturesDefaultValues.apply(statefull_features);
+                class_type = ClassType_t.PL;
+                hdr.dune.class_type = ClassType_t.PL;
+            } else {
+                class_type = ClassType_t.FL;
+                hdr.dune.class_type = ClassType_t.FL;
+            }
+            // Update the boolean
+            type_is_fl_hdr = hdr.dune.class_type == ClassType_t.FL;
         } else {
-            // Flow is already locally known
-            hdr.dune.flow_class = meta.flow_class;
-            // TODO
-            // Use local info to populate dune header
+            if ((!class_is_known_hdr &&
+                !(type_is_fl_hdr && !class_is_known_hdr && pkt_count >= INFERENCE_POINT)) ||
+                (!collision && !type_is_fl_hdr && class_is_known_hdr && pkt_count < INFERENCE_POINT)) {
+                GetStatefullFeaturesDefaultValues.apply(statefull_features);
+                class_type = ClassType_t.PL;
+            } else {
+                class_type = ClassType_t.FL;
+            }
+        }
+
+        // Actual inference
+        if (!class_is_known_hdr ||
+            (!collision && !type_is_fl_hdr && class_is_known_hdr && pkt_count <= INFERENCE_POINT)) {
+            if (class_type == ClassType_t.FL && pkt_count > INFERENCE_POINT) {
+                FlowClassBeforeControllerUpdate.read(class, hashes.reg_idx32);
+            } else {
+                InferenceModel.apply(
+                    hdr, meta, std_meta, statefull_features, class
+                );
+                FlowClassBeforeControllerUpdate.write(hashes.reg_idx32, class);
+            }
+            if (class_type == ClassType_t.FL && class != UNKNOWN_CLASS
+                && type_is_fl_hdr && !class_is_known_hdr) {
+                ControllerWasNotified.read(notified, hashes.reg_idx32);
+                if (notified == 0) {
+                    digest<FlowDigest_t>(0, {
+                        hdr.ipv4.src_addr, hdr.ipv4.dst_addr,
+                        meta.src_port, meta.dst_port, hdr.ipv4.protocol,
+                        hdr.dune.mpls_label, class, hashes.reg_idx,
+                    });
+                    ControllerWasNotified.write(hashes.reg_idx32, 1);
+                }
+            }
+        }
+
+        // Load results from header to not overwrite them
+        if (class_is_known_hdr) {
+            class_type = hdr.dune.class_type;
+            class = hdr.dune.class;
+        }
+
+        // Update the results
+        hdr.dune.class_type = class_type;
+        hdr.dune.class = class;
+        // For statistics do not overide a collision that happened upstream;
+        if (hdr.dune.collision != 0 && collision) {
+                hdr.dune.collision = 1;
         }
     }
 }
