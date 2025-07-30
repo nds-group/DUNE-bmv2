@@ -231,7 +231,7 @@ control Inference(
                     digest<FlowDigest_t>(0, {
                         hdr.ipv4.src_addr, hdr.ipv4.dst_addr,
                         meta.src_port, meta.dst_port, hdr.ipv4.protocol,
-                        class, hashes.reg_idx,
+                        hdr.dune.mpls_label, class, hashes.reg_idx,
                     });
                     ControllerWasNotified.write(hashes.reg_idx32, 1);
                 }
