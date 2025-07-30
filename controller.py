@@ -18,6 +18,22 @@ logging.basicConfig(level=logging.DEBUG)
 
 from collections import namedtuple
 
+# --- Shared thread-safe context for controller ---
+class ControllerContext:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.topo = None
+
+    def set_paths(self, paths_dict):
+        with self._lock:
+            self.paths = paths_dict
+
+    def get_paths(self):
+        with self._lock:
+            return self.paths
+
+context = ControllerContext()
+
 DuneDigest = namedtuple('DuneDigest',
                         [
                             'src_addr',
@@ -148,7 +164,7 @@ class Controller():
                     bitwidth = member.type_spec.bitstring.bit.bitwidth
                     self.field_list.append((member.name, bitwidth))
                 return
-        raise ValueError(f'Digest "{digest_name}" not found in P4Info.')
+        raise ValueError(f'Digest "{self.digest_name}" not found in P4Info.')
 
     def get_registers_from_switch(self):
         config = json.loads(self.thrift_client.bm_get_config())
@@ -229,6 +245,7 @@ class Controller():
 
     def get_switches_in_mpls_path(self, mpls_label):
         try:
+            paths = context.get_paths()
             nodes = paths[str(mpls_label)]
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
@@ -329,8 +346,8 @@ def main():
     args = parse_args()
 
     with open(args.topo, 'r') as file:
-        global paths
         paths = json.load(file)['paths']
+        context.set_paths(paths)  # replace global topo
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
