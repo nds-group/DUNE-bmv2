@@ -16,6 +16,23 @@ import signal
 
 from logger import thread_entry, get_global_logger
 
+# --- Shared thread-safe context for controller ---
+class ControllerContext:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.topo = None
+
+    def set_topo(self, topo_dict):
+        with self._lock:
+            self.topo = topo_dict
+
+    def get_topo(self):
+        with self._lock:
+            return self.topo
+
+context = ControllerContext()
+
+# --- Other global variables ---
 logger = get_global_logger()
 logger.info("Starting controller.py")
 
@@ -73,7 +90,6 @@ def connect_to_switch(address, device_id):
 
     # Wait for arbitration response
     response = next(stream)
-    logger.debug(f"Received stream message: {response}")
     assert response.HasField("arbitration")
     logger.info("Connected to switch with device_id = %s", device_id)
 
@@ -185,13 +201,13 @@ def clear_registers(dune_digest, sw, logger):
         logger.info(f"[!] Cleared register {register} at index {dune_digest.register_index}")
 
 def get_path_switches_by_mpls_label(mpls_label):
+    topo = context.get_topo()
     return topo['paths'][mpls_label]
 
 
+
 def process_digest_entries(sw, logger):
-    logger.debug('ENTERING PROCESS DIGEST 1')
     response = next(sw.stream)
-    logger.debug('ENTERING PROCESS DIGEST 2')
     request_queue = sw.queue
     field_list = sw.field_list
 
@@ -226,6 +242,7 @@ def process_digest_entries(sw, logger):
 def controller_thread(grpc_port, thrift_port, device_id, logger):
     digest_name = "FlowDigest_t"
     stub, stream, q = connect_to_switch(address=f'127.0.0.1:{grpc_port}', device_id=int(device_id))
+    logger.debug('ENTERING PROCESS DIGEST 2')
     p4info = get_p4info(stub, device_id=int(device_id))
     field_list = build_digest_field_map(p4info, digest_name)
 
@@ -267,13 +284,12 @@ def controller_thread(grpc_port, thrift_port, device_id, logger):
             shutdown_event.set()
             break
         except Exception as e:
-            logger.error(f"[!] Error receiving stream message: {e}")
+            logger.exception(f"[!] Error receiving stream message: {e}")
             break
             
     logger.debug(f"Controller thread for device {device_id} on ports {grpc_port}, {thrift_port} is shutting down")
             
 
-topo = None
 threads = {}
 queues = {}
 shutdown_event = threading.Event()
@@ -361,7 +377,7 @@ def main():
     shutdown_event.clear()
 
     logger.info('Starting the server')
-    topo = json.loads(args.topo)
+    context.set_topo(json.loads(args.topo))  # replace global topo
     run_server(args.ip, args.port)
 
 

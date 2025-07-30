@@ -67,6 +67,6 @@ def thread_entry(target, thread_name, *args, **kwargs):
     try:
         target(*args, logger=logger, **kwargs)
     except Exception:
-        logger.error("Unhandled exception in thread %s:\n%s",
+        logger.exception("Unhandled exception in thread %s:\n%s",
                      thread_name, traceback.format_exc())
 
