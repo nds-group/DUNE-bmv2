@@ -14,6 +14,7 @@
 #include "network_headers.p4"
 
 typedef bit<8> Class_t;
+typedef bit<16> MplsLabel_t;
 
 enum bit<8> ClassType_t {
     PL = 0, // Packet Level
@@ -36,6 +37,7 @@ header Dune_h {
     Class_t class;
     bit<8> collision;
     ModelId_t model_id;
+    MplsLabel_t mpls_label;
 }
 
 struct Headers_t {
@@ -74,6 +76,7 @@ struct FlowDigest_t {
     bit<16> src_port;
     bit<16> dst_port;
     IPv4Protocol protocol;
+    MplsLabel_t mpls_label;
     Class_t flow_class;
     RegIdx_t register_index;
 }

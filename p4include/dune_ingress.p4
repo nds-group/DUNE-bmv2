@@ -7,18 +7,58 @@
 #define ENABLE_INFERENCE 1
 #endif
 
+#define NO_MPLS_LABEL 0
+
 #if ENABLE_INFERENCE
 #include "dune_inference.p4"
 #endif
 
 control Forwarding(
+    inout Headers_t hdr,
     inout standard_metadata_t std_meta
 )
 {
+    action nop() {}
+
+    action SetMplsLabel(MplsLabel_t label) {
+        hdr.dune.mpls_label = label;
+    }
+
+    action SetEgressPort(bit<9> port) {
+        std_meta.egress_spec = port;
+    }
+
+    table TableIngressPortToMPLS {
+        key = {
+            std_meta.ingress_port: exact;
+        }
+        actions = {
+            SetMplsLabel;
+            nop;
+        }
+        // TODO: change to compile-time variable
+        size = 32;
+        const default_action = nop();
+    }
+
+    table TableMPLSToEgressPort {
+        key = {
+            hdr.dune.mpls_label: exact;
+        }
+        actions = {
+            SetEgressPort;
+            nop;
+        }
+        // TODO: change to compile-time variable
+        size = 1024;
+        const default_action = nop();
+    }
+
     apply {
-        // TODO :
-        // Do the forwarding
-        std_meta.egress_spec = 2;
+        if (hdr.dune.mpls_label == NO_MPLS_LABEL) {
+            TableIngressPortToMPLS.apply();
+        }
+        TableMPLSToEgressPort.apply();
     }
 }
     
@@ -37,6 +77,7 @@ control DuneIngress(
                 class = UNKNOWN_CLASS,
                 collision = 0,
                 model_id = NO_MODEL_ID,
+                mpls_label = 0,
             };
             hdr.ethernet.ether_type = EtherType.DUNE;
         }
@@ -53,7 +94,7 @@ control DuneIngress(
 #if ENABLE_INFERENCE
         Inference.apply(hdr, meta, std_meta);
 #endif
-        Forwarding.apply(std_meta);
+        Forwarding.apply(hdr, std_meta);
     }
 }
 
