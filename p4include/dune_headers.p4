@@ -15,7 +15,7 @@
 
 typedef bit<8> Class_t;
 
-enum bit<1> ClassType_t {
+enum bit<8> ClassType_t {
     PL = 0, // Packet Level
     FL = 1, // Flow Level
 }
@@ -27,15 +27,14 @@ enum bit<1> ClassType_t {
 #define PKT_CNT_BIT_WIDTH 32
 typedef bit<PKT_CNT_BIT_WIDTH> PktCount_t;
 
-typedef bit<6> ModelId_t;
+typedef bit<8> ModelId_t;
 #define NO_MODEL_ID ((ModelId_t) 0)
 
 header Dune_h {
     EtherType ether_type; // Backup from ethernet header since Dune replaces it 
     ClassType_t class_type;
     Class_t class;
-    bool collision;
-    PktCount_t pkt_count;
+    bit<8> collision;
     ModelId_t model_id;
 }
 
@@ -67,9 +66,6 @@ struct Metadata_t {
    // Ports with no regards to TCP or UDP
     bit<16> src_port;
     bit<16> dst_port;
-
-    Class_t flow_class;
-    /* TODO */
 }
 
 struct FlowDigest_t {

@@ -164,9 +164,9 @@ def handle_dune_digest(dune_digest, sw):
 
     client.bm_mt_add_entry(
         cxt_id,
-        "DuneIngress.IsFlowClassKnownLocally.FlowClass",
+        "DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass",
         match_keys,
-        "DuneIngress.IsFlowClassKnownLocally.MetaSetFlowClass",
+        "DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass",
         action_data,
         options
     )
@@ -258,7 +258,7 @@ def handle_new_connection(conn, addr):
             ack = 'ACK'
             print('Sending ack', flush=True)
             conn.sendall(ack.encode())
-            #add_controller_thread(grpc_port, thrift_port, device_id)
+            add_controller_thread(grpc_port, thrift_port, device_id)
     except Exception as e:
         print(e, flush=True)
     finally:
@@ -317,7 +317,7 @@ def main():
     shutdown_event.clear()
 
     print('Starting the server', flush=True)
-    #run_server(args.ip, args.port)
+    run_server(args.ip, args.port)
 
 
 if __name__ == '__main__':

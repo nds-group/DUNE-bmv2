@@ -138,6 +138,8 @@ control Inference(
     StatefullFeatures_t statefull_features;
 
     register<Class_t>(NB_REG_ENTRIES) FlowClassBeforeControllerUpdate;
+    register<bit<1>>(NB_REG_ENTRIES) ControllerWasNotified;
+    bit<1> notified;
 
     ClassType_t class_type;
     Class_t class;
@@ -146,14 +148,20 @@ control Inference(
     PktCount_t pkt_count;
     bool is_new_flow;
 
-    bool flow_known_locally;
-
     bool type_is_fl_hdr;
     bool class_is_known_hdr;
 
     apply {
+        IsFlowClassKnownLocally.apply(hdr, meta, class); // TODO MAYBE : bring this outside of inference control ?
+        if (class != UNKNOWN_CLASS) {
+            hdr.dune.class_type = ClassType_t.FL;
+            hdr.dune.class = class;
+            return;
+        }
         if (hdr.dune.model_id != MODEL_ID - 1) {
             return;
+        } else {
+            hdr.dune.model_id = MODEL_ID;
         }
 
         class_type = UNKNOWN_CLASS_TYPE;
@@ -169,34 +177,43 @@ control Inference(
 
         // Updating the features of the flow
         if (!(type_is_fl_hdr && class_is_known_hdr)) {
-            IsFlowClassKnownLocally.apply(hdr, meta, class);
-            flow_known_locally = class != UNKNOWN_CLASS;
-            // If the flow is classified in the table than we have cleared
-            // registers, skipping the next part to not repopulate the registers
-            if (!flow_known_locally) {
-                CheckCollisionAndNewFlow.apply(hashes, collision, is_new_flow);
-                if (!collision) {
-                    // The flow ID doesn't colides with a previous one so we can track
-                    // the number of packets we received from it and other features.
-                    GetPktCount.apply(hashes, pkt_count);
-                    if (pkt_count <= INFERENCE_POINT) {
-                        UpdateAndGetStatefullFeatures.apply(
-                            hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
-                        );
-                    }
+            CheckCollisionAndNewFlow.apply(hashes, collision, is_new_flow);
+            if (!collision) {
+                // The flow ID doesn't colides with a previous one so we can track
+                // the number of packets we received from it and other features.
+                GetPktCount.apply(hashes, pkt_count);
+                if (pkt_count <= INFERENCE_POINT) {
+                    UpdateAndGetStatefullFeatures.apply(
+                        hdr, std_meta, hashes, pkt_count, is_new_flow, statefull_features
+                    );
                 }
             }
         }
 
-        if ((!class_is_known_hdr &&
-            !(type_is_fl_hdr && !class_is_known_hdr && pkt_count >= INFERENCE_POINT)) ||
-            (!collision && !type_is_fl_hdr && class_is_known_hdr && pkt_count < INFERENCE_POINT)) {
-            GetStatefullFeaturesDefaultValues.apply(statefull_features);
-            class_type = ClassType_t.PL;
+        // Reseting flow features if inference point not reached
+        if (MODEL_ID == 1) {
+            if (collision || (!collision && pkt_count < INFERENCE_POINT)) {
+                GetStatefullFeaturesDefaultValues.apply(statefull_features);
+                class_type = ClassType_t.PL;
+                hdr.dune.class_type = ClassType_t.PL;
+            } else {
+                class_type = ClassType_t.FL;
+                hdr.dune.class_type = ClassType_t.FL;
+            }
+            // Update the boolean
+            type_is_fl_hdr = hdr.dune.class_type == ClassType_t.FL;
         } else {
-            class_type = ClassType_t.FL;
+            if ((!class_is_known_hdr &&
+                !(type_is_fl_hdr && !class_is_known_hdr && pkt_count >= INFERENCE_POINT)) ||
+                (!collision && !type_is_fl_hdr && class_is_known_hdr && pkt_count < INFERENCE_POINT)) {
+                GetStatefullFeaturesDefaultValues.apply(statefull_features);
+                class_type = ClassType_t.PL;
+            } else {
+                class_type = ClassType_t.FL;
+            }
         }
 
+        // Actual inference
         if (!class_is_known_hdr ||
             (!collision && !type_is_fl_hdr && class_is_known_hdr && pkt_count <= INFERENCE_POINT)) {
             if (class_type == ClassType_t.FL && pkt_count > INFERENCE_POINT) {
@@ -205,25 +222,24 @@ control Inference(
                 InferenceModel.apply(
                     hdr, meta, std_meta, statefull_features, class
                 );
+                FlowClassBeforeControllerUpdate.write(hashes.reg_idx32, class);
             }
-            if (class_type == ClassType_t.FL
-                && class != UNKNOWN_CLASS
-                && hdr.dune.class_type == ClassType_t.FL
-                && hdr.dune.class == UNKNOWN_CLASS) {
-                digest<FlowDigest_t>(0, {
-                    hdr.ipv4.src_addr,
-                    hdr.ipv4.dst_addr,
-                    meta.src_port,
-                    meta.dst_port,
-                    hdr.ipv4.protocol,
-                    class,
-                    hashes.reg_idx,
-                });
+            if (class_type == ClassType_t.FL && class != UNKNOWN_CLASS
+                && type_is_fl_hdr && !class_is_known_hdr) {
+                ControllerWasNotified.read(notified, hashes.reg_idx32);
+                if (notified == 0) {
+                    digest<FlowDigest_t>(0, {
+                        hdr.ipv4.src_addr, hdr.ipv4.dst_addr,
+                        meta.src_port, meta.dst_port, hdr.ipv4.protocol,
+                        class, hashes.reg_idx,
+                    });
+                    ControllerWasNotified.write(hashes.reg_idx32, 1);
+                }
             }
         }
 
         // Load results from header to not overwrite them
-        if (hdr.dune.class != UNKNOWN_CLASS) {
+        if (class_is_known_hdr) {
             class_type = hdr.dune.class_type;
             class = hdr.dune.class;
         }
@@ -232,7 +248,9 @@ control Inference(
         hdr.dune.class_type = class_type;
         hdr.dune.class = class;
         // For statistics do not overide a collision that happened upstream;
-        hdr.dune.collision = hdr.dune.collision || collision;
+        if (hdr.dune.collision != 0 && collision) {
+                hdr.dune.collision = 1;
+        }
     }
 }
 
