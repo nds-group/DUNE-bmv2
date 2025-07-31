@@ -54,7 +54,7 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 MN_TOPO_CLASS := dunejson
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc
-MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY)
+MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR)
 MN_LINK := --link=p4link
 
 

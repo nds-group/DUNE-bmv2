@@ -59,10 +59,13 @@ def main():
         verbose=False,
     )
 
-    populate_forwarding_tables(
-            json.loads(args.ingress_port_to_mpls),
-            json.loads(args.mpls_to_egress_port),
-            )
+    with \
+            open(args.ingress_port_to_mpls, 'r') as ingress_port_to_mpls,\
+            open(args.mpls_to_egress_port, 'r') as mpls_to_egress_port:
+                populate_forwarding_tables(
+                        json.load(ingress_port_to_mpls),
+                        json.load(mpls_to_egress_port),
+                        )
 
     p4.teardown()
 

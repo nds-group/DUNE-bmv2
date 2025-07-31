@@ -199,20 +199,26 @@ class P4SimpleSwitchGRPC(Switch):
         populate_cmd = ' '.join(args)
         sw.cmd(populate_cmd)
 
-        args = ['python', 'populate_forwarding_tables.py']
-        args += ['--p4info', sw.sw_p4info]
-        args += ['--json', sw.sw_json]
-        args += ['--grpc-port', str(sw.grpc_port)]
-        args += ['--device-id', str(sw.device_id)]
-        ingress_port_to_mpls = json.dumps(sw.ingress_port_to_mpls)
-        args += ['--ingress-port-to-mpls', f"'{ingress_port_to_mpls}'"]
-        mpls_to_egress_port = json.dumps(sw.mpls_to_egress_port)
-        args += ['--mpls-to-egress-port', f"'{mpls_to_egress_port}'"]
+        with \
+                tempfile.NamedTemporaryFile(mode='w+') as ingress_port_to_mpls,\
+                tempfile.NamedTemporaryFile(mode='w+') as mpls_to_egress_port:
+                    json.dump(sw.ingress_port_to_mpls, ingress_port_to_mpls)
+                    json.dump(sw.mpls_to_egress_port, mpls_to_egress_port)
+                    ingress_port_to_mpls.flush()
+                    mpls_to_egress_port.flush()
 
-        args += ['>>', log_file, '2>&1']
+                    args = ['python', 'populate_forwarding_tables.py']
+                    args += ['--p4info', sw.sw_p4info]
+                    args += ['--json', sw.sw_json]
+                    args += ['--grpc-port', str(sw.grpc_port)]
+                    args += ['--device-id', str(sw.device_id)]
+                    args += ['--ingress-port-to-mpls', ingress_port_to_mpls.name]
+                    args += ['--mpls-to-egress-port', mpls_to_egress_port.name]
 
-        populate_cmd = ' '.join(args)
-        sw.cmd(populate_cmd)
+                    args += ['>>', log_file, '2>&1']
+
+                    populate_cmd = ' '.join(args)
+                    sw.cmd(populate_cmd)
 
     def advertise_to_controller(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -231,26 +237,28 @@ class P4Controller(Controller):
     ctrl_path = 'controller.py'
     assertIsFile(ctrl_path)
 
-    def __init__(self, name, topo, **kwargs):
+    def __init__(self, name, topo, log_dir, **kwargs):
         Controller.__init__(self, name, **kwargs)
         assertIsFile(topo)
-        self.topo = loadJsonFile(topo)
-        assert self.topo
+        with open(topo, 'r') as file:
+            json.load(file)
+        self.topo = topo
+        assertIsDir(log_dir)
+        self.log_dir = log_dir
 
         args = ['python', P4Controller.ctrl_path]
         args += ['--ip', str(self.ip)]
         args += ['--port', str(self.port)]
-        topo_json = json.dumps(self.topo)
-        # ToDO: maybe self.topo['paths'] is enough...
-        args += ['--topo', f"'{topo_json}'"]
+        args += ['--topo', self.topo]
+        args += ['--log-dir', self.log_dir]
 
         self.start_cmd = ' '.join(args)
 
     def start(self):
         assert not P4SimpleSwitchGRPC.is_port_listening(self.port)
 
-        # TODO : better logging
-        self.cmd(self.start_cmd + ' > output 2>&1 &')
+        log_file = os.path.join(self.log_dir, 'controller.log')
+        self.cmd(self.start_cmd + ' > ' + log_file + ' 2>&1 &')
 
     def stop(self):
         self.cmd(f'pkill -f "{self.start_cmd}"')
