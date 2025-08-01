@@ -14,7 +14,9 @@ import signal
 
 import os
 import logging
-logging.basicConfig(level=logging.DEBUG)
+
+# Formatter
+FORMAT = "%(asctime)s [%(threadName)s] [%(levelname)s] %(message)s"
 
 from collections import namedtuple
 
@@ -51,15 +53,21 @@ threads = {}
 queues = {}
 shutdown_event = threading.Event()
 
+
+
 class Controller():
     digest_name = 'FlowDigest_t'
 
     def __init__(self, grpc_port, thrift_port, device_id, key, log_dir):
         self.c_name = 'c' + device_id
+        threading.current_thread().name = self.c_name
         
         self.logger = logging.getLogger(self.c_name)
+
         log_file = os.path.join(log_dir, self.c_name + '.log')
         handler = logging.FileHandler(log_file, mode='w')
+        formatter = logging.Formatter(FORMAT)
+        handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
         self.logger.info('Controller %s started', self.c_name)
@@ -200,7 +208,7 @@ class Controller():
             options
         )
 
-        self.logger.info('Inserted entry into IsFlowClassKnownLocally table')
+        self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
         for key in match_keys:
             self.logger.debug('      Match key: %s', key.exact.key.hex())
         self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
@@ -266,8 +274,10 @@ def shutdown(sig, frame):
     shutdown_event.set()
     for thread in threads.values():
         thread.join()
-    
+
 class Server():
+    logger = None
+
     def __init__(self, ip, port, topo, log_dir):
         self.ip = ip
         self.port = port
@@ -281,36 +291,40 @@ class Server():
     def run(self):
         shutdown_event.clear()
 
-        logging.info('Binding server to %s:%s', self.ip, self.port)
+        threading.current_thread().name = self.__class__.__name__
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+        self.logger.info('Binding server to %s:%s', self.ip, self.port)
         self.server_socket.bind((self.ip, self.port))
         self.server_socket.listen(1)
 
-        logging.info('Listening for connections')
+        self.logger.info('Listening for connections')
         while not shutdown_event.is_set():
             try:
                 conn, _ = self.server_socket.accept()
-                logging.info('Accepted a new connection')
+                self.logger.info('Accepted a new connection')
                 self.handle_new_connection(conn)
             except socket.timeout:
                 continue
-        logging.info('Closing the server socket')
+        self.logger.info('Closing the server socket')
         self.server_socket.close()
 
     def handle_new_connection(self, conn):
-        logging.debug('New connection to register a switch')
+        self.logger.debug('New connection to register a switch')
         try:
             data = conn.recv(1024).decode()
             if data:
-                logging.debug('Received registration data')
+                self.logger.debug('Received registration data')
                 grpc_port, thrift_port, device_id = data.strip().split(',')
                 ack = 'ACK'
-                logging.debug('Sending registration data ACK to s%s', device_id)
+                self.logger.debug('Sending registration data ACK to s%s', device_id)
                 conn.sendall(ack.encode())
                 self.add_threaded_controller(grpc_port, thrift_port, device_id)
         except Exception as e:
-            logging.info(e)
+            self.logger.info(e)
         finally:
-            logging.debug('Switch registered, closing connnection')
+            self.logger.debug('Switch registered, closing connnection')
             conn.close()
 
     def add_threaded_controller(self, grpc_port, thrift_port, device_id):
@@ -327,7 +341,7 @@ class Server():
                 )
         threads[key] = thread
         queues[key] = queue.Queue()
-        logging.info('Starting controller thread for switch %s', key)
+        self.logger.info('Starting controller thread for switch %s', key)
         thread.start()
 
 def parse_args():
@@ -337,6 +351,7 @@ def parse_args():
     parser.add_argument('--port', required=True, type=int)
     parser.add_argument('--topo', required=True)
     parser.add_argument('--log-dir', required=True)
+    parser.add_argument('--log-level', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'])
 
     args = parser.parse_args()
     return args
@@ -344,6 +359,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+    logging.basicConfig(level=log_level, format=FORMAT)
 
     with open(args.topo, 'r') as file:
         paths = json.load(file)['paths']
