@@ -77,7 +77,7 @@ control DuneIngress(
                 class = UNKNOWN_CLASS,
                 collision = 0,
                 model_id = NO_MODEL_ID,
-                mpls_label = 0,
+                mpls_label = NO_MPLS_LABEL,
             };
             hdr.ethernet.ether_type = EtherType.DUNE;
         }
@@ -87,14 +87,13 @@ control DuneIngress(
         // Because rejected packets are not automatically droped on Bmv2
         if (std_meta.parser_error != error.NoError) {
             mark_to_drop(std_meta);
-            exit;
-        }
-        InsertDuneHeaderIfNotPresent();
-        // TODO better
+        } else {
+            InsertDuneHeaderIfNotPresent();
+            Forwarding.apply(hdr, std_meta);
 #if ENABLE_INFERENCE
-        Inference.apply(hdr, meta, std_meta);
+            Inference.apply(hdr, meta, std_meta);
 #endif
-        Forwarding.apply(hdr, std_meta);
+        }
     }
 }
 

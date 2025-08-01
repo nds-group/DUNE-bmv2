@@ -429,6 +429,7 @@ def main():
     d.max_timeout_ns = 10 * 1000000000
     d.max_list_size = 10000
     d.insert()
+    logging.info('Digest entry for FlowDigest_t inserted')
 
     p4.teardown()
 

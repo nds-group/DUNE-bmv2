@@ -6,31 +6,35 @@ from p4.v1 import p4runtime_pb2_grpc
 import bmpy_utils as bm
 from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions
 
-from collections import namedtuple
-
 import queue
 import argparse
 import threading
 import socket
 import signal
 
-from logger import thread_entry, setup_thread_logger, get_global_logger
+import os
+import logging
 
-logger = get_global_logger()
-logger.info("Starting P4Runtime client")
+# Formatter
+FORMAT = "%(asctime)s [%(threadName)s] [%(levelname)s] %(message)s"
 
-Switch = namedtuple('Switch', 
-                    [
-                        'stub',
-                        'stream',
-                        'device_id',
-                        'queue',
-                        'p4info',
-                        'field_list',
-                        'thrift_client',
-                        'registers'
-                    ]
-                   )
+from collections import namedtuple
+
+# --- Shared thread-safe context for controller ---
+class ControllerContext:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.topo = None
+
+    def set_paths(self, paths_dict):
+        with self._lock:
+            self.paths = paths_dict
+
+    def get_paths(self):
+        with self._lock:
+            return self.paths
+
+context = ControllerContext()
 
 DuneDigest = namedtuple('DuneDigest',
                         [
@@ -45,266 +49,309 @@ DuneDigest = namedtuple('DuneDigest',
                         ]
                        )
 
-def connect_to_switch(address, device_id):
-    # TODO : Maybe close the channel ?
-    channel = grpc.insecure_channel(address)
-    stub = p4runtime_pb2_grpc.P4RuntimeStub(channel)
-
-    # This queue will hold StreamMessageRequest objects
-    q = queue.Queue()
-
-    def request_generator():
-        while True:
-            req = q.get()
-            if req is None:
-                break
-            yield req
-
-    # Start stream
-    stream = stub.StreamChannel(request_generator())
-
-    # Send the initial arbitration message
-    election_id = p4runtime_pb2.Uint128(high=0, low=2)
-    req = p4runtime_pb2.StreamMessageRequest()
-    req.arbitration.device_id = device_id
-    req.arbitration.election_id.CopyFrom(election_id)
-
-    q.put(req)
-
-    # Wait for arbitration response
-    response = next(stream)
-    assert response.HasField("arbitration")
-    logger.info("Connected to switch with device_id = %s", device_id)
-
-    # Return the stub, the stream, and the request queue to send more messages later
-    return stub, stream, q
-
-
-def get_p4info(stub, device_id):
-    req = p4runtime_pb2.GetForwardingPipelineConfigRequest()
-    req.device_id = device_id
-    req.response_type =  p4runtime_pb2.GetForwardingPipelineConfigRequest.P4INFO_AND_COOKIE
-    resp = stub.GetForwardingPipelineConfig(req)
-    return resp.config.p4info
-
-
-
-def get_digest_id(p4info, digest_name):
-    for digest in p4info.digests:
-        if digest.preamble.name == digest_name:
-            return digest.preamble.id
-    raise ValueError(f"Digest '{digest_name}' not found in P4Info.")
-
-
-def list_digests(p4info):
-    return [digest.preamble.name for digest in p4info.digests]
-
-
-def build_digest_field_map(p4info, digest_name):
-    """Returns an ordered list of (name, bitwidth) based on digest type_spec."""
-    for digest in p4info.digests:
-        if digest.preamble.name == digest_name:
-            struct_name = digest.type_spec.struct.name
-            struct = p4info.type_info.structs[struct_name]
-            field_list = []
-            for member in struct.members:
-                bitwidth = member.type_spec.bitstring.bit.bitwidth
-                field_list.append((member.name, bitwidth))
-            return field_list
-    raise ValueError(f"Digest '{digest_name}' not found in P4Info.")
-
-
-def get_registers_from_switch(thrift_client):
-    config = json.loads(thrift_client.bm_get_config())
-
-    registers = []
-    for register_array in config["register_arrays"]:
-        registers.append(register_array["name"])
-    return registers
-
-
-def get_DuneDigest(entry, field_list, logger):
-    logger.debug("  Digest entry:")
-    dune_digest = {}
-    for i, member in enumerate(entry.struct.members):
-        if i < len(field_list):
-            name, bitwidth = field_list[i]
-            value = int.from_bytes(member.bitstring)
-            dune_digest[name] = value
-            logger.debug(f"    {name:<15} = {value}")
-        else:
-            logger.debug(f"    Unknown member (too many): {member}")
-
-    return DuneDigest(**dune_digest)
-
-
-def send_digest_ack(digest_id, list_id, request_queue):
-    ack = p4runtime_pb2.StreamMessageRequest()                                                                                                                                                                                                      
-    ack.digest_ack.digest_id = digest_id                                                                                                                                                                                                     
-    ack.digest_ack.list_id = list_id                                                                                                                                                                                                         
-    request_queue.put(ack)  
-
-
-def handle_dune_digest(dune_digest, sw):
-    client = sw.thrift_client
-    cxt_id = 0
-
-    match_keys = [
-        BmMatchParam(exact=BmMatchParamExact(dune_digest.src_addr.to_bytes(4, 'big'))),
-        BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_addr.to_bytes(4, 'big'))),
-        BmMatchParam(exact=BmMatchParamExact(dune_digest.src_port.to_bytes(2, 'big'))),
-        BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_port.to_bytes(2, 'big'))),
-        BmMatchParam(exact=BmMatchParamExact(dune_digest.protocol.to_bytes(1, 'big')))
-    ]
-
-    options = BmAddEntryOptions()
-    # If you are doing ternary or LPM matches and need to set priority, you must use:
-    # options.priority = 10  # or whatever
-
-    action_data = [dune_digest.flow_class.to_bytes(1, 'big')] 
-
-    client.bm_mt_add_entry(
-        cxt_id,
-        "DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass",
-        match_keys,
-        "DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass",
-        action_data,
-        options
-    )
-
-    for register in sw.registers:
-        client.bm_register_write(cxt_id, register, dune_digest.register_index, 0)
-
-
-def listen_for_digests(digest_name, sw, logger):
-    logger.info(f"Listening for digest messages: {digest_name}")
-    stream = sw.stream
-    request_queue = sw.queue
-    device_id = sw.device_id
-    field_list = sw.field_list
-    thrift_client = sw.thrift_client
-
-    while not shutdown_event.is_set():
-        try:
-            response = next(stream)
-        except StopIteration:
-            break
-        except Exception as e:
-            logger.error(f"[!] Error receiving stream message: {e}")
-            break
-
-        if response.HasField("digest"):
-            digest = response.digest
-            logger.info(f"[!] Received digest ID: {digest.digest_id}, List ID: {digest.list_id}")
-
-            for entry in digest.data:
-                dune_digest = get_DuneDigest(entry, field_list, logger)
-                handle_dune_digest(dune_digest, sw)
-                logger.info(f"[✓] Handled digest ID: {digest.digest_id}, List ID: {digest.list_id}")
-                logger.debug("      Digest Content: %s", dune_digest)
-
-            send_digest_ack(digest_id=digest.digest_id, list_id=digest.list_id, request_queue=request_queue)
-            logger.info("[✓] Sent digest_ack\n")
-
-
-        else:
-            logger.info("Other message:", response)
-
-def controller_thread(grpc_port, thrift_port, device_id):
-    digest_name = "FlowDigest_t"
-    stub, stream, q = connect_to_switch(address=f'127.0.0.1:{grpc_port}', device_id=int(device_id))
-    p4info = get_p4info(stub, device_id=int(device_id))
-    field_list = build_digest_field_map(p4info, digest_name)
-
-    # Thrift connection to the switch
-    # (because registers not implemented in GRPC)
-    # thrift_client: Client = bm.thrift_connect_standard(
-    thrift_client = bm.thrift_connect_standard(
-        thrift_ip='127.0.0.1',
-        thrift_port=thrift_port,
-    )
-    registers = get_registers_from_switch(thrift_client)
-
-    sw = Switch(stub,
-                p4info=p4info,
-                stream=stream,
-                device_id=device_id,
-                queue=q,
-                field_list=field_list,
-                thrift_client=thrift_client,
-                registers=registers
-         )
-    thread_entry(listen_for_digests, f'c{sw.device_id}', digest_name, sw)
-
 threads = {}
+queues = {}
 shutdown_event = threading.Event()
 
-def add_controller_thread(grpc_port, thrift_port, device_id):
-    key = (grpc_port, thrift_port, device_id)
-    assert key not in threads, 'Controller thread already exists for this key'
-    thread = threading.Thread(
-            target=controller_thread,
-            args=key,
-            )
-    threads[key] = thread
-    thread.start()
-
-def handle_new_connection(conn, addr):
-    print('New connection', flush=True)
-    try:
-        data = conn.recv(1024).decode()
-        if data:
-            print('Received data', flush=True)
-            grpc_port, thrift_port, device_id = data.strip().split(',')
-            ack = 'ACK'
-            print('Sending ack', flush=True)
-            conn.sendall(ack.encode())
-            add_controller_thread(grpc_port, thrift_port, device_id)
-    except Exception as e:
-        print(e, flush=True)
-    finally:
-        print('Closing connection', flush=True)
-        conn.close()
 
 
-def run_server(ip, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print('Binding', flush=True)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind((ip, port))
-    s.settimeout(1.0)
-    s.listen(1)
+class Controller():
+    digest_name = 'FlowDigest_t'
 
-    shutdown_event.clear()
+    def __init__(self, grpc_port, thrift_port, device_id, key, log_dir):
+        self.c_name = 'c' + device_id
+        threading.current_thread().name = self.c_name
+        
+        self.logger = logging.getLogger(self.c_name)
 
-    while not shutdown_event.is_set():
+        log_file = os.path.join(log_dir, self.c_name + '.log')
+        handler = logging.FileHandler(log_file, mode='w')
+        formatter = logging.Formatter(FORMAT)
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
+        self.logger.info('Controller %s started', self.c_name)
+
+        self.key = key
+
+        # Thrift connection to the switch
+        # (because registers not implemented in GRPC)
+        # thrift_client: Client = bm.thrift_connect_standard(
+        self.logger.info('Connecting with thrift')
+        self.thrift_client = bm.thrift_connect_standard(
+                thrift_ip='127.0.0.1',
+                thrift_port=thrift_port,
+                )
+        self.connect_with_grpc(grpc_port, int(device_id))
+        self.get_p4info(int(device_id))
+        self.main()
+
+    def main(self):
+        self.build_digest_field_map()
+        self.get_registers_from_switch()
+
+        self.logger.info('Listening for digest messages')
+        while not shutdown_event.is_set():
+            if not queues[self.key].empty():
+                external_dune_digest = queues[self.key].get()
+                self.logger.debug('Received digest from queue: %s', external_dune_digest)
+                self.insert_flow_table(external_dune_digest)
+                self.clear_registers(external_dune_digest)
+            if not self.stream_responses.empty():
+                self.logger.debug('Received direct digest')
+                dune_digest = self.stream_responses.get()
+                self.process_digest_entries(dune_digest)
+    
+        self.logger.info('Controller %s shuting down', self.c_name)
+        self.stream_thread.join()
+
+    def connect_with_grpc(self, grpc_port, device_id):
+        self.logger.info('Connecting with grpc')
+        channel = grpc.insecure_channel('127.0.0.1:' + grpc_port)
+        self.stub = p4runtime_pb2_grpc.P4RuntimeStub(channel)
+        self.stream_requests = queue.Queue()
+        self.stream_responses = queue.Queue()
+
+        def request_generator():
+            while not shutdown_event.is_set():
+                req = self.stream_requests.get()
+                if req is None:
+                    break
+                yield req
+
+        stream = self.stub.StreamChannel(request_generator())
+
+        def response_reader():
+            try:
+                while not shutdown_event.is_set():
+                    resp = next(stream)
+                    self.stream_responses.put(resp)
+            except grpc._channel._MultiThreadedRendezvous as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE and 'Socket closed' in e.details():
+                    self.logger.info('Stream thread socket closed, shuting down')
+                    shutdown_event.set()
+                else:
+                    raise
+
+        self.stream_thread = threading.Thread(
+                target=response_reader, args=()
+                )
+
+        self.logger.info('Starting stream thread')
+        self.stream_thread.start()
+
+        # Send the initial arbitration message
+        election_id = p4runtime_pb2.Uint128(high=0, low=2)
+        req = p4runtime_pb2.StreamMessageRequest()
+        req.arbitration.device_id = device_id
+        req.arbitration.election_id.CopyFrom(election_id)
+
+        self.stream_requests.put(req)
+
+        # Wait for arbitration response
+        response = self.stream_responses.get()
+        assert response.HasField('arbitration')
+        self.logger.info('GRPC connection with the switch established')
+
+    def get_p4info(self, device_id):
+        req = p4runtime_pb2.GetForwardingPipelineConfigRequest()
+        req.device_id = device_id
+        req.response_type =  p4runtime_pb2.GetForwardingPipelineConfigRequest.P4INFO_AND_COOKIE
+        resp = self.stub.GetForwardingPipelineConfig(req)
+
+        self.p4info = resp.config.p4info
+
+    def build_digest_field_map(self):
+        """Returns an ordered list of (name, bitwidth) based on digest type_spec."""
+        for digest in self.p4info.digests:
+            if digest.preamble.name == Controller.digest_name:
+                struct_name = digest.type_spec.struct.name
+                struct = self.p4info.type_info.structs[struct_name]
+                self.field_list = []
+                for member in struct.members:
+                    bitwidth = member.type_spec.bitstring.bit.bitwidth
+                    self.field_list.append((member.name, bitwidth))
+                return
+        raise ValueError(f'Digest "{self.digest_name}" not found in P4Info.')
+
+    def get_registers_from_switch(self):
+        config = json.loads(self.thrift_client.bm_get_config())
+
+        self.registers = []
+        for register_array in config['register_arrays']:
+            self.registers.append(register_array['name'])
+
+    def insert_flow_table(self, dune_digest):
+        client = self.thrift_client
+        cxt_id = 0
+
+        match_keys = [
+            BmMatchParam(exact=BmMatchParamExact(dune_digest.src_addr.to_bytes(4, 'big'))),
+            BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_addr.to_bytes(4, 'big'))),
+            BmMatchParam(exact=BmMatchParamExact(dune_digest.src_port.to_bytes(2, 'big'))),
+            BmMatchParam(exact=BmMatchParamExact(dune_digest.dst_port.to_bytes(2, 'big'))),
+            BmMatchParam(exact=BmMatchParamExact(dune_digest.protocol.to_bytes(1, 'big')))
+        ]
+
+        options = BmAddEntryOptions()
+        # If you are doing ternary or LPM matches and need to set priority, you must use:
+        # options.priority = 10  # or whatever
+
+        action_data = [dune_digest.flow_class.to_bytes(1, 'big')] 
+
+        client.bm_mt_add_entry(
+            cxt_id,
+            'DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass',
+            match_keys,
+            'DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass',
+            action_data,
+            options
+        )
+
+        self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
+        for key in match_keys:
+            self.logger.debug('      Match key: %s', key.exact.key.hex())
+        self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
+
+    def clear_registers(self, dune_digest):
+        client = self.thrift_client
+        cxt_id = 0
+
+        for register in self.registers:
+            client.bm_register_write(cxt_id, register, dune_digest.register_index, 0)
+
+    def process_digest_entries(self, response):
+        if response.HasField('digest'):
+            digest = response.digest
+            self.logger.info('Received digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
+
+            for entry in digest.data:
+                dune_digest = self.parse_dune_digest_entry(entry)
+                path_switches = self.get_switches_in_mpls_path(dune_digest.mpls_label)
+                for sw in path_switches:
+                    queues[sw].put(dune_digest)
+
+            self.logger.info('Handled digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
+            self.logger.debug('      Digest content: %s', dune_digest)
+
+            self.send_digest_ack(digest.digest_id, digest.list_id)
+        else:
+            self.logger.info('Received message that is not a digest : %s', response)
+
+    def parse_dune_digest_entry(self, entry):
+        self.logger.debug('  Digest entry:')
+        dune_digest = {}
+        for i, member in enumerate(entry.struct.members):
+            if i < len(self.field_list):
+                name, bitwidth = self.field_list[i]
+                value = int.from_bytes(member.bitstring)
+                dune_digest[name] = value
+                self.logger.debug(f'    {name:<15} = {value}')
+            else:
+                self.logger.debug(f'    Unknown member (too many): {member}')
+        return DuneDigest(**dune_digest)
+
+    def get_switches_in_mpls_path(self, mpls_label):
         try:
-            print('Listening', flush=True)
-            conn, addr = s.accept()
-            handle_new_connection(conn, addr)
-        except socket.timeout:
-            continue
-    s.close()
+            paths = context.get_paths()
+            nodes = paths[str(mpls_label)]
+        except KeyError:
+            self.logger.error('No path corresponding to mpls label %s', mpls_label)
+            shutdown_event.set()
+        # WARNING : We assume switches names are of the shape 'sN'
+        switches = filter(lambda node: 's' == node[0], nodes)
+        return list(switches)
 
+    def send_digest_ack(self, digest_id, list_id):
+        ack = p4runtime_pb2.StreamMessageRequest()
+        ack.digest_ack.digest_id = digest_id
+        ack.digest_ack.list_id = list_id
+        self.logger.info('Sending digest ACK (ID: %s, List ID: %s)', digest_id, list_id)
+        self.stream_requests.put(ack)
 
 def shutdown(sig, frame):
-    print('WOW shut down SIGINT', flush=True)
+    logging.info('Received %s, shuting down', signal.Signals(sig).name)
     shutdown_event.set()
     for thread in threads.values():
         thread.join()
 
-def shutdown2(sig, frame):
-    print('WOW shut down SIGTERM', flush=True)
-    shutdown_event.set()
-    for thread in threads.values():
-        thread.join()
+class Server():
+    logger = None
 
+    def __init__(self, ip, port, topo, log_dir):
+        self.ip = ip
+        self.port = port
+        self.topo = topo
+        self.log_dir = log_dir
+
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.settimeout(1.0)
+
+    def run(self):
+        shutdown_event.clear()
+
+        threading.current_thread().name = self.__class__.__name__
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+        self.logger.info('Binding server to %s:%s', self.ip, self.port)
+        self.server_socket.bind((self.ip, self.port))
+        self.server_socket.listen(1)
+
+        self.logger.info('Listening for connections')
+        while not shutdown_event.is_set():
+            try:
+                conn, _ = self.server_socket.accept()
+                self.logger.info('Accepted a new connection')
+                self.handle_new_connection(conn)
+            except socket.timeout:
+                continue
+        self.logger.info('Closing the server socket')
+        self.server_socket.close()
+
+    def handle_new_connection(self, conn):
+        self.logger.debug('New connection to register a switch')
+        try:
+            data = conn.recv(1024).decode()
+            if data:
+                self.logger.debug('Received registration data')
+                grpc_port, thrift_port, device_id = data.strip().split(',')
+                ack = 'ACK'
+                self.logger.debug('Sending registration data ACK to s%s', device_id)
+                conn.sendall(ack.encode())
+                self.add_threaded_controller(grpc_port, thrift_port, device_id)
+        except Exception as e:
+            self.logger.info(e)
+        finally:
+            self.logger.debug('Switch registered, closing connnection')
+            conn.close()
+
+    def add_threaded_controller(self, grpc_port, thrift_port, device_id):
+        key = 's' + device_id
+        assert key not in threads, f'Controller thread already exists for key {key}'
+        thread = threading.Thread(
+                target=Controller,
+                args=(grpc_port,
+                      thrift_port,
+                      device_id,
+                      key,
+                      self.log_dir,
+                      )
+                )
+        threads[key] = thread
+        queues[key] = queue.Queue()
+        self.logger.info('Starting controller thread for switch %s', key)
+        thread.start()
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--ip', required=True)
     parser.add_argument('--port', required=True, type=int)
+    parser.add_argument('--topo', required=True)
+    parser.add_argument('--log-dir', required=True)
+    parser.add_argument('--log-level', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'])
 
     args = parser.parse_args()
     return args
@@ -313,12 +360,26 @@ def parse_args():
 def main():
     args = parse_args()
 
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown2)
-    shutdown_event.clear()
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+    logging.basicConfig(level=log_level, format=FORMAT)
 
-    print('Starting the server', flush=True)
-    run_server(args.ip, args.port)
+    with open(args.topo, 'r') as file:
+        paths = json.load(file)['paths']
+        context.set_paths(paths)  # replace global topo
+
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    server = Server(args.ip, args.port, args.topo, args.log_dir)
+
+    logging.info('Starting the server')
+    server_thread = threading.Thread(target=server.run, args=())
+    server_thread.start()
+    signal.pause()
+    logging.info('Waiting for server shutdown')
+    server_thread.join()
+    logging.info('Server now stopped')
 
 
 if __name__ == '__main__':

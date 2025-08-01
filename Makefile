@@ -10,6 +10,7 @@ OBJECTS_DIR := ./p4objects
 
 PCAP_DIR := ./pcaps
 LOG_DIR := ./logs
+LOG_LEVEL := INFO
 RUN_DIRS := $(PCAP_DIR) $(LOG_DIR)
 
 
@@ -54,7 +55,7 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 MN_TOPO_CLASS := dunejson
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc
-MN_CONTROLLER := --controller=p4controller
+MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}
 MN_LINK := --link=p4link
 
 
