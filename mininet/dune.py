@@ -163,7 +163,7 @@ class Dune(Topo, ABC):
 
 
 class DuneJsonTopo(Dune):
-    def set_topo(self, topo):
+    def set_topo(self, topo, **kwargs):
         self.topo = loadJsonFile(topo)
 
 

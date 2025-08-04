@@ -15,7 +15,7 @@ def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
                     action='DuneIngress.Forwarding.SetMplsLabel'
                     )
             entry.match['std_meta.ingress_port'] = port
-            entry.action['label'] = mpls
+            entry.action['label'] = str(mpls)
             entry.priority = 0
             entry.insert()
     if mpls_to_egress_port is not None:
