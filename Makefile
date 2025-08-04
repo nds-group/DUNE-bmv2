@@ -49,10 +49,15 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
-			 pcap_dir=$(PCAP_DIR)
+			 pcap_dir=$(PCAP_DIR) \
+			 super_spines=1 \
+			 pods=1 \
+			 spines=2 \
+			 leafs=2 \
+			 hosts_per_leaf=1
 
 
-MN_TOPO_CLASS := dunejson
+MN_TOPO_CLASS := dunefattree
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc
 MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}

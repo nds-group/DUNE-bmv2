@@ -7,6 +7,8 @@ import networkx as nx
 import pulp
 import itertools
 
+from pprint import pprint
+
 def assertIsFile(path):
     assert isfile(path), path + ' was not found or is a directory'
 
@@ -40,13 +42,19 @@ class Dune(Topo, ABC):
         # Adding the objective function
         ilp += pulp.lpSum(X)
 
-        # Creating paths
-        pairs = itertools.combinations(self.topo['hosts'], 2)
-        paths = []
-        for h1, h2 in pairs:
-            for path in nx.all_simple_paths(G, h1, h2):
-                sw_in_path = list(filter(lambda node: node in self.topo['switches'], path))
-                paths.append(sw_in_path)
+        if self.__class__.__name__ == 'DuneFatTree':
+            paths = list(self.topo['paths'].values())
+            paths = [list(filter(lambda node: node in self.topo['switches'], path)) for path in paths]
+            print(paths)
+        else:
+            # Creating paths
+            pairs = itertools.combinations(self.topo['hosts'], 2)
+            paths = []
+            for h1, h2 in pairs:
+                for path in nx.all_simple_paths(G, h1, h2):
+                    sw_in_path = list(filter(lambda node: node in self.topo['switches'], path))
+                    paths.append(sw_in_path)
+
 
         # Integrity constraints :
         # For each path, one of each model must appear in a switch in the path
@@ -94,7 +102,7 @@ class Dune(Topo, ABC):
         pass
 
 
-    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir):
+    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         assertIsFile(topo)
         assertIsFile(models)
         assertIsDir(models_dir)
@@ -102,7 +110,7 @@ class Dune(Topo, ABC):
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
-        self.set_topo(topo)
+        self.set_topo(topo, **kwargs)
         assert self.topo
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
@@ -160,34 +168,104 @@ class DuneJsonTopo(Dune):
 
 
 class DuneFatTree(Dune):
-    def set_topo(self, topo, spines=2, leafs=3, hosts_per_leaf=1):
+    def set_topo(self, topo,  super_spines=1,  pods=3, spines=2, leafs=3, hosts_per_leaf=1):
         topo = {
             'switches': [],
             'hosts': [],
-            'links': []
+            'links': [],
+            'paths': {}
         }
-        for i in range(spines):
-            # Create spine switches
-            topo['switches'].append(f'spine{i}')
-            # Create DC interconnect hosts
-            topo['hosts'].append(f'dc_host{i}')
-            for j in range(spines):
-                # Connect spines to DC interconnect hosts
-                topo['links'].append([f'spine{i}', f'dc_host{j}'])
+        egress_hosts_per_leaf = pods
+        for spine_idx in range(spines):
+            for super_spine_idx in range(super_spines):
+                topo['switches'].append(f'ss_{spine_idx}_{super_spine_idx}')
 
-        for i in range(leafs):
-            # Create leaf switches
-            topo['switches'].append(f'leaf{i}')
-            # Connect leafs to spines
-            for j in range(spines):
-                topo['links'].append([f'spine{j}', f'leaf{i}'])
-            # Create hosts
-            for j in range(hosts_per_leaf):
-                topo['hosts'].append(f'host{i}_{j}')
-                # Connect hosts to leafs
-                topo['links'].append([f'leaf{i}', f'host{i}_{j}'])
+        def set_up_pod(pod_idx, hosts_per_leaf=hosts_per_leaf):
+            # Create super spines for current spine
+            for spine_idx in range(spines):
+                for super_spine_idx in range(super_spines): # Connect spine switches to super spines
+                    topo['links'].append([f'p{pod_idx}_s{spine_idx}', f'ss_{spine_idx}_{super_spine_idx}'])
+            for spine_idx in range(spines):
+                # Create spine switch
+                topo['switches'].append(f'p{pod_idx}_s{spine_idx}')
 
+            for leaf_idx in range(leafs):
+                # Create leaf switches
+                topo['switches'].append(f'p{pod_idx}_l{leaf_idx}')
+                # Connect leafs to spines
+                for spine_idx in range(spines):
+                    topo['links'].append([f'p{pod_idx}_s{spine_idx}', f'p{pod_idx}_l{leaf_idx}'])
+                # Create hosts
+                for host_idx in range(hosts_per_leaf):
+                    topo['hosts'].append(f'p{pod_idx}_h{leaf_idx}_{host_idx}')
+                    # Connect hosts to leafs
+                    topo['links'].append([f'p{pod_idx}_l{leaf_idx}', f'p{pod_idx}_h{leaf_idx}_{host_idx}'])
+
+        for pod_idx in range(pods):
+            set_up_pod(pod_idx)
+
+        set_up_pod('e', pods*hosts_per_leaf)
+        
+        # Set up paths
+        path_id = 1
+
+        # Create a matrix of egress hosts indexed by [leaf][host] => 'podegress_host{leaf_idx}_{host_idx}'
+        egress_host_matrix = [
+            [f'pe_h{leaf_idx}_{host_idx}' for host_idx in range(egress_hosts_per_leaf)]
+            for leaf_idx in range(leafs)
+        ]
+
+        # Track how many total hosts per pod
+        total_hosts_per_pod = leafs * hosts_per_leaf
+
+        # Flatten column-wise across pods: group by host position, not by pod
+        # For each host_index in the pod (0..N), assign corresponding egress host [i][j]
+        for host_pos in range(total_hosts_per_pod):
+            egress_leaf_idx = host_pos % leafs
+            egress_host_idx = host_pos // leafs
+
+            # Defensive check
+            if egress_host_idx >= hosts_per_leaf:
+                raise RuntimeError("Not enough egress hosts to assign uniquely")
+
+            dst_leaf = f'pe_l{egress_leaf_idx}'
+            dst_host = egress_host_matrix[egress_leaf_idx][egress_host_idx]
+
+            for pod_idx in range(pods):
+                # Compute leaf and host index in current pod
+                leaf_idx = host_pos // hosts_per_leaf
+                host_idx = host_pos % hosts_per_leaf
+
+                # Defensive check
+                if leaf_idx >= leafs:
+                    continue  # in case pods have fewer hosts
+
+                src_host = f'p{pod_idx}_h{leaf_idx}_{host_idx}'
+                src_leaf = f'p{pod_idx}_l{leaf_idx}'
+
+                # Balanced  spine selection
+                spine_idx = (path_id -  1) % spines
+                super_spine_idx = (path_id -  1) % super_spines
+                spine = f'p{pod_idx}_s{spine_idx}'
+                super_spine = f'ss_{spine_idx}_{super_spine_idx}'
+                dst_spine = f'pe_s{spine_idx}'
+
+                path = [
+                    src_host,
+                    src_leaf,
+                    spine,
+                    super_spine,
+                    dst_spine,
+                    dst_leaf,
+                    dst_host
+                ]
+
+                topo['paths'][path_id] = path
+                path_id += 1
+
+        pprint(topo)
         self.topo = topo
+
 
 
 

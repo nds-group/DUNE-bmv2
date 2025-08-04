@@ -24,7 +24,9 @@ from collections import namedtuple
 class ControllerContext:
     def __init__(self):
         self._lock = threading.Lock()
-        self.topo = None
+        self.paths = None
+        self.switches = None
+        self.hosts = None
 
     def set_paths(self, paths_dict):
         with self._lock:
@@ -33,6 +35,22 @@ class ControllerContext:
     def get_paths(self):
         with self._lock:
             return self.paths
+
+    def set_switches(self, switches_dict):
+        with self._lock:
+            self.switches_dict = switches_dict
+
+    def get_switches(self):
+        with self._lock:
+            return self.switches
+
+    def set_hosts(self, hosts_dict):
+        with self._lock:
+            self.hosts_dict = hosts_dict
+
+    def get_hosts(self):
+        with self._lock:
+            return self.hosts
 
 context = ControllerContext()
 
@@ -258,8 +276,7 @@ class Controller():
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
-        # WARNING : We assume switches names are of the shape 'sN'
-        switches = filter(lambda node: 's' == node[0], nodes)
+        switches = filter(lambda node: node not in context.get_hosts, nodes)
         return list(switches)
 
     def send_digest_ack(self, digest_id, list_id):
@@ -365,8 +382,13 @@ def main():
     logging.basicConfig(level=log_level, format=FORMAT)
 
     with open(args.topo, 'r') as file:
-        paths = json.load(file)['paths']
-        context.set_paths(paths)  # replace global topo
+        topo = json.load(file)
+        paths = topo['paths']
+        switches = topo['switches']
+        hosts = topo['hosts']
+        context.set_switches(switches)
+        context.set_hosts(hosts)
+        context.set_paths(paths)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
