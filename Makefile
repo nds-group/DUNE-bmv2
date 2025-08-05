@@ -63,10 +63,16 @@ MN_SWITCH := --switch=p4simpleswitchgrpc
 MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}
 MN_LINK := --link=p4link
 MN_TEST := --test=tonpcap
+MN_LOG_LEVEL := -v $(LOG_LEVEL)
 
 
-MN_ARGS := $(MN_CUSTOM) $(MN_TOPO) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK) $(MN_TEST)
-
+MN_ARGS := $(MN_CUSTOM) \
+		   $(MN_TOPO) \
+		   $(MN_HOST) \
+		   $(MN_SWITCH) \
+		   $(MN_CONTROLLER) \
+		   $(MN_LINK) \
+		   $(MN_TEST)
 
 
 .PHONY: all
@@ -75,7 +81,7 @@ all: build
 
 .PHONY: run
 run: build | $(RUN_DIRS)
-	$(MN) $(MN_ARGS) -v debug
+	$(MN) $(MN_ARGS)
 
 
 .PHONY: stop
