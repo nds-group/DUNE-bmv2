@@ -388,8 +388,6 @@ def upload_model(model, feature_offset, code_table_offset, index):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--p4info", required=True)
-    parser.add_argument("--json", required=True)
     parser.add_argument("--grpc-port", required=True)
     parser.add_argument("--device-id", required=True, type=int)
 
@@ -407,7 +405,6 @@ def main():
         device_id=args.device_id,
         grpc_addr=f"0.0.0.0:{args.grpc_port}",
         election_id=(0, 1),  # (high, low)
-        config=p4.FwdPipeConfig(args.p4info, args.json),
         verbose=False,
     )
 
@@ -422,14 +419,6 @@ def main():
         )
         feature_offset += len_features
         code_table_offset += len_code_tables
-
-    # Configure digest
-    d = p4.DigestEntry("FlowDigest_t")
-    d.ack_timeout_ns = 10 * 1000000000
-    d.max_timeout_ns = 10 * 1000000000
-    d.max_list_size = 10000
-    d.insert()
-    logging.info('Digest entry for FlowDigest_t inserted')
 
     p4.teardown()
 

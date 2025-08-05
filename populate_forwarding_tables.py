@@ -35,8 +35,6 @@ def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--p4info", required=True)
-    parser.add_argument("--json", required=True)
     parser.add_argument("--grpc-port", required=True)
     parser.add_argument("--device-id", required=True, type=int)
 

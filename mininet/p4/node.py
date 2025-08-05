@@ -183,18 +183,30 @@ class P4SimpleSwitchGRPC(Switch):
         return self.controller_is_connected
 
     def populate_tables(sw):
-        if sw.models is not None:
+        log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
+        inference_disabled = sw.models is None
+
+        args = ['python', 'upload_p4prog_to_switch.py']
+        args += ['--p4info', sw.sw_p4info]
+        args += ['--json', sw.sw_json]
+        args += ['--grpc-port', str(sw.grpc_port)]
+        args += ['--device-id', str(sw.device_id)]
+        args += ['--inference-disabled', str(inference_disabled)]
+
+        args += ['>', log_file, '2>&1']
+
+        populate_cmd = ' '.join(args)
+        sw.cmd(populate_cmd)
+
+        if inference_disabled:
+            args = ['echo', '"The inference pipeline is disabled in this switch"']
+        else:
             args = ['python', 'convert_RF_and_populate_tables.py']
-            args += ['--p4info', sw.sw_p4info]
-            args += ['--json', sw.sw_json]
             args += ['--grpc-port', str(sw.grpc_port)]
             args += ['--device-id', str(sw.device_id)]
             args += ['--models'] + sw.models
-        else:
-            args = ['echo', '"The inference pipeline is disabled in this switch"']
 
-        log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
-        args += ['>', log_file, '2>&1']
+        args += ['>>', log_file, '2>&1']
 
         populate_cmd = ' '.join(args)
         sw.cmd(populate_cmd)
@@ -208,8 +220,6 @@ class P4SimpleSwitchGRPC(Switch):
                     mpls_to_egress_port.flush()
 
                     args = ['python', 'populate_forwarding_tables.py']
-                    args += ['--p4info', sw.sw_p4info]
-                    args += ['--json', sw.sw_json]
                     args += ['--grpc-port', str(sw.grpc_port)]
                     args += ['--device-id', str(sw.device_id)]
                     args += ['--ingress-port-to-mpls', ingress_port_to_mpls.name]
@@ -221,6 +231,7 @@ class P4SimpleSwitchGRPC(Switch):
                     sw.cmd(populate_cmd)
 
     def advertise_to_controller(self):
+        # TODO/WARNING : If a switch as no inference pipeline does it need to connect to the controller ?
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.controller.ip, self.controller.port))
             data = f'{self.grpc_port},{self.thrift_port},{self.device_id},{self.name},{self.models}'

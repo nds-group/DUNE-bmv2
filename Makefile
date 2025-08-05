@@ -10,7 +10,7 @@ OBJECTS_DIR := ./p4objects
 
 PCAP_DIR := ./pcaps
 LOG_DIR := ./logs
-LOG_LEVEL := INFO
+LOG_LEVEL := DEBUG
 RUN_DIRS := $(PCAP_DIR) $(LOG_DIR)
 
 

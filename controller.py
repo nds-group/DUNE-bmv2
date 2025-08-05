@@ -90,20 +90,23 @@ class Controller():
 
         self.logger.info('Controller %s started', self.c_name)
 
-        self.key = name
-        self.device_id = int(device_id)
+        try:
+            self.key = name
+            self.device_id = int(device_id)
 
-        # Thrift connection to the switch
-        # (because registers not implemented in GRPC)
-        # thrift_client: Client = bm.thrift_connect_standard(
-        self.logger.info('Connecting with thrift')
-        self.thrift_client = bm.thrift_connect_standard(
-                thrift_ip='127.0.0.1',
-                thrift_port=thrift_port,
-                )
-        self.connect_with_grpc(grpc_port, int(device_id))
-        self.get_p4info()
-        self.main()
+            # Thrift connection to the switch
+            # (because registers not implemented in GRPC)
+            # thrift_client: Client = bm.thrift_connect_standard(
+            self.logger.info('Connecting with thrift')
+            self.thrift_client = bm.thrift_connect_standard(
+                    thrift_ip='127.0.0.1',
+                    thrift_port=thrift_port,
+                    )
+            self.connect_with_grpc(grpc_port, int(device_id))
+            self.get_p4info()
+            self.main()
+        except Exception as e:
+            self.logger.error(e)
 
     def main(self):
         self.build_digest_field_map()
