@@ -62,9 +62,10 @@ MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc
 MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}
 MN_LINK := --link=p4link
+MN_TEST := --test=tonpcap
 
 
-MN_ARGS := $(MN_CUSTOM) $(MN_TOPO) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK)
+MN_ARGS := $(MN_CUSTOM) $(MN_TOPO) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK) $(MN_TEST)
 
 
 

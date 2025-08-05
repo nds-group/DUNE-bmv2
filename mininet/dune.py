@@ -1,7 +1,11 @@
 from mininet.topo import Topo
+from mininet.cli import CLI
+from mininet.log import info
 from abc import ABC, abstractmethod
 
-from os.path import isfile, isdir
+from time import sleep
+from os import listdir
+from os.path import isfile, isdir, join
 import json
 import networkx as nx
 import pulp
@@ -266,8 +270,37 @@ class DuneFatTree(Dune):
         pprint(topo)
         self.topo = topo
 
+def injectTonPcap(net):
+    pps = 1000
+    pcap_dir = 'utils/merged_pcaps'
+    pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
+    ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
+    procs = {}
+
+    info('*** Starting tcpreplay on ingress hosts\n')
+    for host, pcap_file in zip(ingress_hosts, pcap_files):
+        pcap_file_path = join(pcap_dir, pcap_file)
+        assertIsFile(pcap_file_path)
+        cmd = f'tcpreplay -i {host.defaultIntf()} -t {pcap_file_path}'
+        info(f'  {host.name}: {cmd}\n')
+        procs[host.name] = host.popen(cmd)
+        info('\n')
+
+    while True:
+        still_running = [name for name, p in procs.items() if p.poll() is None]
+        if not still_running:
+            break
+        info(f'  still running: {still_running}\n')
+        sleep(0.5)
+
+    info('*** All replays finished\n')
+    CLI(net)
 
 
+
+
+
+tests = { 'tonpcap': injectTonPcap }
 
 
 topos = { 'dunejson' : DuneJsonTopo,
