@@ -223,7 +223,7 @@ class P4SimpleSwitchGRPC(Switch):
     def advertise_to_controller(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.controller.ip, self.controller.port))
-            data = f'{self.grpc_port},{self.thrift_port},{self.device_id}'
+            data = f'{self.grpc_port},{self.thrift_port},{self.device_id},{self.name},{self.models}'
             s.sendall(data.encode())
             print('Registering switch', self.name, 'with controller at', self.controller.ip, ':', self.controller.port)
 

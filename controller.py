@@ -76,8 +76,8 @@ shutdown_event = threading.Event()
 class Controller():
     digest_name = 'FlowDigest_t'
 
-    def __init__(self, grpc_port, thrift_port, device_id, key, log_dir):
-        self.c_name = 'c' + device_id
+    def __init__(self, grpc_port, thrift_port, device_id, name, models, log_dir):
+        self.c_name = 'c_' + name
         threading.current_thread().name = self.c_name
         
         self.logger = logging.getLogger(self.c_name)
@@ -90,7 +90,8 @@ class Controller():
 
         self.logger.info('Controller %s started', self.c_name)
 
-        self.key = key
+        self.key = name
+        self.device_id = int(device_id)
 
         # Thrift connection to the switch
         # (because registers not implemented in GRPC)
@@ -101,7 +102,7 @@ class Controller():
                 thrift_port=thrift_port,
                 )
         self.connect_with_grpc(grpc_port, int(device_id))
-        self.get_p4info(int(device_id))
+        self.get_p4info()
         self.main()
 
     def main(self):
@@ -171,9 +172,9 @@ class Controller():
         assert response.HasField('arbitration')
         self.logger.info('GRPC connection with the switch established')
 
-    def get_p4info(self, device_id):
+    def get_p4info(self):
         req = p4runtime_pb2.GetForwardingPipelineConfigRequest()
-        req.device_id = device_id
+        req.device_id = self.device_id
         req.response_type =  p4runtime_pb2.GetForwardingPipelineConfigRequest.P4INFO_AND_COOKIE
         resp = self.stub.GetForwardingPipelineConfig(req)
 
@@ -273,6 +274,7 @@ class Controller():
         try:
             paths = context.get_paths()
             nodes = paths[str(mpls_label)]
+            self.logger.debug('Found path for mpls label %s: %s', mpls_label, nodes)
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
@@ -333,19 +335,20 @@ class Server():
             data = conn.recv(1024).decode()
             if data:
                 self.logger.debug('Received registration data')
-                grpc_port, thrift_port, device_id = data.strip().split(',')
+                grpc_port, thrift_port, device_id, name, models = data.strip().split(',')
                 ack = 'ACK'
-                self.logger.debug('Sending registration data ACK to s%s', device_id)
+                self.logger.debug('Sending registration data ACK to %s', name)
                 conn.sendall(ack.encode())
-                self.add_threaded_controller(grpc_port, thrift_port, device_id)
+                self.add_threaded_controller(grpc_port, thrift_port, device_id, name, models)
         except Exception as e:
             self.logger.info(e)
         finally:
             self.logger.debug('Switch registered, closing connnection')
             conn.close()
 
-    def add_threaded_controller(self, grpc_port, thrift_port, device_id):
-        key = 's' + device_id
+    def add_threaded_controller(self, grpc_port, thrift_port, device_id, name, models):
+        # key = 's' + device_id
+        key = name
         assert key not in threads, f'Controller thread already exists for key {key}'
         thread = threading.Thread(
                 target=Controller,
@@ -353,6 +356,7 @@ class Server():
                       thrift_port,
                       device_id,
                       key,
+                      models,
                       self.log_dir,
                       )
                 )
@@ -380,6 +384,7 @@ def main():
     # Set up logging
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(level=log_level, format=FORMAT)
+    logging.info('Log level set to %s', args.log_level.upper())
 
     with open(args.topo, 'r') as file:
         topo = json.load(file)
