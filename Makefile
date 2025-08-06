@@ -10,7 +10,7 @@ OBJECTS_DIR := ./p4objects
 
 PCAP_DIR := ./pcaps
 LOG_DIR := ./logs
-LOG_LEVEL := DEBUG
+LOG_LEVEL := INFO
 RUN_DIRS := $(PCAP_DIR) $(LOG_DIR)
 
 
@@ -59,11 +59,12 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 
 MN_TOPO_CLASS := dunefattree
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
-MN_SWITCH := --switch=p4simpleswitchgrpc
-MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}
+MN_SWITCH := --switch=p4simpleswitchgrpc,log_level=$(LOG_LEVEL)
+MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=$(LOG_LEVEL)
 MN_LINK := --link=p4link
 MN_TEST := --test=tonpcap
-MN_LOG_LEVEL := -v $(LOG_LEVEL)
+
+MN_LOG_LEVEL := -v $(shell echo $(LOG_LEVEL) | tr '[:upper:]' '[:lower:]')
 
 
 MN_ARGS := $(MN_CUSTOM) \
@@ -72,7 +73,8 @@ MN_ARGS := $(MN_CUSTOM) \
 		   $(MN_SWITCH) \
 		   $(MN_CONTROLLER) \
 		   $(MN_LINK) \
-		   $(MN_TEST)
+		   $(MN_TEST) \
+		   $(MN_LOG_LEVEL)
 
 
 .PHONY: all

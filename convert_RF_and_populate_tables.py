@@ -10,7 +10,8 @@ pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
 
 import logging
-logging.basicConfig(level=logging.INFO)
+# Formatter
+FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 
 ## definition of useful functions
 ## gets all splits and conditions
@@ -392,12 +393,18 @@ def parse_args():
     parser.add_argument("--device-id", required=True, type=int)
 
     parser.add_argument("--models", nargs="+", required=True)
+    parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
     return args
 
 
 def main():
     args = parse_args()
+
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+
+    logging.basicConfig(level=log_level, format=FORMAT)
 
     # Connecting to the switch
     logging.info('Establishing GRPC connection')

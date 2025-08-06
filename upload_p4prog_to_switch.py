@@ -2,7 +2,8 @@ import p4runtime_sh.shell as p4
 import argparse
 
 import logging
-logging.basicConfig(level=logging.INFO)
+# Formatter
+FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -12,12 +13,18 @@ def parse_args():
     parser.add_argument("--grpc-port", required=True)
     parser.add_argument("--device-id", required=True, type=int)
     parser.add_argument("--inference-disabled", required=True)
+    parser.add_argument("--log-level", default="INFO")
 
     args = parser.parse_args()
     return args
 
 def main():
     args = parse_args()
+
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+
+    logging.basicConfig(level=log_level, format=FORMAT)
 
     # Connecting to the switch
     logging.info('Establishing GRPC connection')

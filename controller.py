@@ -89,8 +89,12 @@ class Controller():
         self.logger.addHandler(handler)
 
         self.logger.info('Controller %s started', self.c_name)
+        self.logger.debug('\t GRPC port: %s', grpc_port)
+        self.logger.debug('\t Thrift port: %s', thrift_port)
+        self.logger.debug('\t Device ID: %s', device_id)
 
         try:
+            self.models = None if models == 'None' else models
             self.key = name
             self.device_id = int(device_id)
 
@@ -109,7 +113,9 @@ class Controller():
             self.logger.error(e)
 
     def main(self):
-        self.build_digest_field_map()
+        if self.models is not None:
+            self.build_digest_field_map()
+
         self.get_registers_from_switch()
 
         self.logger.info('Listening for digest messages')
@@ -119,7 +125,7 @@ class Controller():
                 self.logger.debug('Received digest from queue: %s', external_dune_digest)
                 self.insert_flow_table(external_dune_digest)
                 self.clear_registers(external_dune_digest)
-            if not self.stream_responses.empty():
+            if self.models is not None and not self.stream_responses.empty():
                 self.logger.debug('Received direct digest')
                 dune_digest = self.stream_responses.get()
                 self.process_digest_entries(dune_digest)
@@ -386,6 +392,7 @@ def main():
 
     # Set up logging
     log_level = getattr(logging, args.log_level.upper())
+
     logging.basicConfig(level=log_level, format=FORMAT)
     logging.info('Log level set to %s', args.log_level.upper())
 
