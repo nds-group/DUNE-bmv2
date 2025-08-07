@@ -1,6 +1,7 @@
 import p4runtime_sh.shell as p4
 import argparse
 
+import sys
 import logging
 # Formatter
 FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
@@ -20,6 +21,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    inference_disabled = True if args.inference_disabled.lower() == 'true' else False
 
     # Set up logging
     log_level = getattr(logging, args.log_level.upper())
@@ -37,7 +39,7 @@ def main():
     )
     logging.info('Switch program uploaded')
 
-    if not bool(args.inference_disabled):
+    if not inference_disabled:
         # Configure digest
         d = p4.DigestEntry("FlowDigest_t")
         d.ack_timeout_ns = 10 * 1000000000

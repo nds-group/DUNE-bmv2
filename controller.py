@@ -38,7 +38,7 @@ class ControllerContext:
 
     def set_switches(self, switches_dict):
         with self._lock:
-            self.switches_dict = switches_dict
+            self.switches = switches_dict
 
     def get_switches(self):
         with self._lock:
@@ -46,7 +46,7 @@ class ControllerContext:
 
     def set_hosts(self, hosts_dict):
         with self._lock:
-            self.hosts_dict = hosts_dict
+            self.hosts = hosts_dict
 
     def get_hosts(self):
         with self._lock:
@@ -287,7 +287,7 @@ class Controller():
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
-        switches = filter(lambda node: node not in context.get_hosts, nodes)
+        switches = filter(lambda node: node not in context.get_hosts(), nodes)
         return list(switches)
 
     def send_digest_ack(self, digest_id, list_id):
@@ -401,8 +401,11 @@ def main():
         paths = topo['paths']
         switches = topo['switches']
         hosts = topo['hosts']
+        logging.debug('Loaded switches: %s', switches)
         context.set_switches(switches)
+        logging.debug('Loaded hosts: %s', hosts)
         context.set_hosts(hosts)
+        logging.debug('Loaded paths: %s', paths)
         context.set_paths(paths)
 
     signal.signal(signal.SIGINT, shutdown)
