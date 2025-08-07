@@ -49,7 +49,6 @@ class Dune(Topo, ABC):
         if self.__class__.__name__ == 'DuneFatTree':
             paths = list(self.topo['paths'].values())
             paths = [list(filter(lambda node: node in self.topo['switches'], path)) for path in paths]
-            print(paths)
         else:
             # Creating paths
             pairs = itertools.combinations(self.topo['hosts'], 2)
@@ -98,7 +97,7 @@ class Dune(Topo, ABC):
                 self.model_assignment[sw] = { 'p4': 'no_inference' }
 
     @abstractmethod
-    def set_topo(self, topo):
+    def set_topo(self, **kwargs):
         """
         Set the topology for the Dune instance.
         This method should be implemented by subclasses to define how the topology is set.
@@ -106,15 +105,14 @@ class Dune(Topo, ABC):
         pass
 
 
-    def build(self, topo, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
-        assertIsFile(topo)
+    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         assertIsFile(models)
         assertIsDir(models_dir)
         assertIsDir(objects_dir)
         assertIsDir(log_dir)
         assertIsDir(pcap_dir)
 
-        self.set_topo(topo, **kwargs)
+        self.set_topo(**kwargs)
         assert self.topo
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
@@ -167,12 +165,14 @@ class Dune(Topo, ABC):
 
 
 class DuneJsonTopo(Dune):
-    def set_topo(self, topo, **kwargs):
+    def set_topo(self, **kwargs):
+        topo = kwargs.get('topo')
+        assertIsFile(topo)
         self.topo = loadJsonFile(topo)
 
 
 class DuneFatTree(Dune):
-    def set_topo(self, topo,  super_spines=1,  pods=3, spines=2, leafs=3, hosts_per_leaf=1):
+    def set_topo(self, super_spines=1,  pods=3, spines=2, leafs=3, hosts_per_leaf=1, **kwargs):
         topo = {
             'switches': [],
             'hosts': [],
@@ -267,7 +267,8 @@ class DuneFatTree(Dune):
                 topo['paths'][path_id] = path
                 path_id += 1
 
-        pprint(topo)
+        with open('configs/topos/fattreetopo.json', 'w') as f:
+            json.dump(topo, f)
         self.topo = topo
 
 def injectTonPcap(net):

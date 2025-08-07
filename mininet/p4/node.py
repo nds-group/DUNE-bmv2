@@ -253,8 +253,10 @@ class P4Controller(Controller):
     ctrl_path = 'controller.py'
     assertIsFile(ctrl_path)
 
-    def __init__(self, name, topo, log_dir, log_level, **kwargs):
+    def __init__(self, name, topo_class, topo, log_dir, log_level, **kwargs):
         Controller.__init__(self, name, **kwargs)
+        if topo_class == 'dunefattree':
+            topo = 'configs/topos/fattreetopo.json'
         assertIsFile(topo)
         with open(topo, 'r') as file:
             json.load(file)

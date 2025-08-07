@@ -41,7 +41,7 @@ MN_CUSTOM_CLASSES := $(shell find $(MN_DIR) -type f -name '*.py')
 MN_CUSTOM := --custom=$(call join_with_comma,$(MN_CUSTOM_CLASSES))
 
 
-TOPOLOGY := configs/topos/topo_ton.json
+CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
 TOPO_ARGS := topo=$(TOPOLOGY) \
@@ -60,7 +60,7 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 MN_TOPO_CLASS := dunefattree
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc,log_level=$(LOG_LEVEL)
-MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=$(LOG_LEVEL)
+MN_CONTROLLER := --controller=p4controller,topo_class=$(MN_TOPO_CLASS),topo=$(CUSTOM_TOPOLOGY),log_dir=$(LOG_DIR),log_level=$(LOG_LEVEL)
 MN_LINK := --link=p4link
 MN_TEST := --test=tonpcap
 

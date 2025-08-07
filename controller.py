@@ -110,7 +110,7 @@ class Controller():
             self.get_p4info()
             self.main()
         except Exception as e:
-            self.logger.error(e)
+            self.logger.exception(e)
 
     def main(self):
         if self.models is not None:
@@ -251,7 +251,7 @@ class Controller():
     def process_digest_entries(self, response):
         if response.HasField('digest'):
             digest = response.digest
-            self.logger.info('Received digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
+            self.logger.debug('Processing digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
 
             for entry in digest.data:
                 dune_digest = self.parse_dune_digest_entry(entry)
