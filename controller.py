@@ -260,7 +260,6 @@ class Controller():
                     queues[sw].put(dune_digest)
 
             self.logger.info('Handled digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
-            self.logger.debug('      Digest content: %s', dune_digest)
 
             self.send_digest_ack(digest.digest_id, digest.list_id)
         else:
@@ -283,7 +282,6 @@ class Controller():
         try:
             paths = context.get_paths()
             nodes = paths[str(mpls_label)]
-            self.logger.debug('Found path for mpls label %s: %s', mpls_label, nodes)
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
