@@ -27,6 +27,7 @@ class ControllerContext:
         self.paths = None
         self.switches = None
         self.hosts = None
+        self.inference_switches = set()
 
     def set_paths(self, paths_dict):
         with self._lock:
@@ -43,6 +44,14 @@ class ControllerContext:
     def get_switches(self):
         with self._lock:
             return self.switches
+
+    def add_inference_switch(self, switch):
+        with self._lock:
+            self.inference_switches.add(switch)
+
+    def get_inference_switches(self):
+        with self._lock:
+            return list(self.inference_switches)
 
     def set_hosts(self, hosts_dict):
         with self._lock:
@@ -96,7 +105,7 @@ class Controller():
         self.logger.debug('\t Device ID: %s', device_id)
 
         try:
-            self.models = None if models == 'None' else models
+            self.models = models
             self.key = name
             self.device_id = int(device_id)
 
@@ -288,6 +297,7 @@ class Controller():
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
         switches = filter(lambda node: node not in context.get_hosts(), nodes)
+        switches = filter(lambda switch: switch in context.get_inference_switches(), switches)
         return list(switches)
 
     def send_digest_ack(self, digest_id, list_id):
@@ -345,6 +355,7 @@ class Server():
             if data:
                 self.logger.debug('Received registration data')
                 grpc_port, thrift_port, device_id, name, models = data.strip().split(',')
+                models = None if models == 'None' else models
                 ack = 'ACK'
                 self.logger.debug('Sending registration data ACK to %s', name)
                 conn.sendall(ack.encode())
@@ -359,6 +370,8 @@ class Server():
         # key = 's' + device_id
         key = name
         assert key not in threads, f'Controller thread already exists for key {key}'
+        if models is not None:
+            context.add_inference_switch(key)
         thread = threading.Thread(
                 target=Controller,
                 args=(grpc_port,
