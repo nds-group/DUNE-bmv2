@@ -86,7 +86,9 @@ class Controller():
         handler = logging.FileHandler(log_file, mode='w')
         formatter = logging.Formatter(FORMAT)
         handler.setFormatter(formatter)
+        self.logger.handlers.clear()
         self.logger.addHandler(handler)
+        self.logger.propagate = False
 
         self.logger.info('Controller %s started', self.c_name)
         self.logger.debug('\t GRPC port: %s', grpc_port)

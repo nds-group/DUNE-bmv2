@@ -1,6 +1,6 @@
 from mininet.topo import Topo
 from mininet.cli import CLI
-from mininet.log import info
+from mininet.log import info, debug, lg
 from abc import ABC, abstractmethod
 
 from time import sleep
@@ -10,6 +10,7 @@ import json
 import networkx as nx
 import pulp
 import itertools
+from collections import defaultdict
 
 from pprint import pprint
 
@@ -83,7 +84,11 @@ class Dune(Topo, ABC):
                             expr.addInPlace(X[sw][prev], 1)
                         ilp += expr >= X[current_model_switch][m]
 
-        ilp.solve()
+        if lg.level == 10:  # Debug level
+            msg = 1
+        else:
+            msg = 0
+        ilp.solve(pulp.PULP_CBC_CMD(msg=msg))
         assert ilp.status == pulp.constants.LpStatusOptimal, 'ILP could not find a solution'
         self.model_assignment = {}
         #TODO log the results
@@ -104,6 +109,16 @@ class Dune(Topo, ABC):
         """
         pass
 
+    def debugTopo(self):
+        debug(f'*** Hosts: {self.topo['hosts']}\n')
+        debug(f'*** Switches: {self.topo['switches']}\n')
+        debug(f'*** Links: ***\n')
+        for link in self.topo['links']:
+            debug(f'  {link[0]} <-> {link[1]}\n')
+        debug(f'*** Paths: ***\n')
+        for path_id, path in self.topo['paths'].items():
+            debug(f'  {path_id}: {path}\n')
+
 
     def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         assertIsFile(models)
@@ -113,6 +128,7 @@ class Dune(Topo, ABC):
         assertIsDir(pcap_dir)
 
         self.set_topo(**kwargs)
+        self.debugTopo()
         assert self.topo
         self.models = loadJsonFile(models)
         self.models_dir = models_dir
@@ -124,6 +140,9 @@ class Dune(Topo, ABC):
             self.addHost(host)
 
         self.assignModels()
+        info('*** Model assignment:\n')
+        for sw in self.topo['switches']:
+            info(f'Added switch {sw} with model {self.model_assignment[sw]}\n')
         for sw in self.topo['switches']:
             self.addSwitch(
                     sw,
@@ -179,7 +198,6 @@ class DuneFatTree(Dune):
             'links': [],
             'paths': {}
         }
-        egress_hosts_per_leaf = pods
         for spine_idx in range(spines):
             for super_spine_idx in range(super_spines):
                 topo['switches'].append(f'ss_{spine_idx}_{super_spine_idx}')
@@ -212,77 +230,57 @@ class DuneFatTree(Dune):
         
         # Set up paths
         path_id = 1
+        pod_spine_counters = defaultdict(int)  # pod_idx -> spine counter
 
-        # Create a matrix of egress hosts indexed by [leaf][host] => 'podegress_host{leaf_idx}_{host_idx}'
-        egress_host_matrix = [
-            [f'pe_h{leaf_idx}_{host_idx}' for host_idx in range(egress_hosts_per_leaf)]
-            for leaf_idx in range(leafs)
-        ]
+        for leaf_idx in range(leafs):
+            for host_idx in range(hosts_per_leaf):
+                dst_leaf = f'pe_l{leaf_idx}'
+                for pod_idx in range(pods):
+                    src_host = f'p{pod_idx}_h{leaf_idx}_{host_idx}'
+                    src_leaf = f'p{pod_idx}_l{leaf_idx}'
 
-        # Track how many total hosts per pod
-        total_hosts_per_pod = leafs * hosts_per_leaf
+                    # Destination host: match pod_idx in the host suffix to create unique egress host
+                    dst_host = f'pe_h{leaf_idx}_{pod_idx}'
 
-        # Flatten column-wise across pods: group by host position, not by pod
-        # For each host_index in the pod (0..N), assign corresponding egress host [i][j]
-        for host_pos in range(total_hosts_per_pod):
-            egress_leaf_idx = host_pos % leafs
-            egress_host_idx = host_pos // leafs
+                    # Balanced spine selection *within each pod*
+                    spine_idx = pod_spine_counters[pod_idx] % spines
+                    pod_spine_counters[pod_idx] += 1
 
-            # Defensive check
-            if egress_host_idx >= hosts_per_leaf:
-                raise RuntimeError("Not enough egress hosts to assign uniquely")
+                    spine = f'p{pod_idx}_s{spine_idx}'
+                    super_spine_idx = (path_id -  1) % super_spines
+                    super_spine = f'ss_{spine_idx}_{super_spine_idx}'
+                    dst_spine = f'pe_s{spine_idx}'
 
-            dst_leaf = f'pe_l{egress_leaf_idx}'
-            dst_host = egress_host_matrix[egress_leaf_idx][egress_host_idx]
+                    path = [
+                        src_host,
+                        src_leaf,
+                        spine,
+                        super_spine,
+                        dst_spine,
+                        dst_leaf,
+                        dst_host
+                    ]
 
-            for pod_idx in range(pods):
-                # Compute leaf and host index in current pod
-                leaf_idx = host_pos // hosts_per_leaf
-                host_idx = host_pos % hosts_per_leaf
-
-                # Defensive check
-                if leaf_idx >= leafs:
-                    continue  # in case pods have fewer hosts
-
-                src_host = f'p{pod_idx}_h{leaf_idx}_{host_idx}'
-                src_leaf = f'p{pod_idx}_l{leaf_idx}'
-
-                # Balanced  spine selection
-                spine_idx = (path_id -  1) % spines
-                super_spine_idx = (path_id -  1) % super_spines
-                spine = f'p{pod_idx}_s{spine_idx}'
-                super_spine = f'ss_{spine_idx}_{super_spine_idx}'
-                dst_spine = f'pe_s{spine_idx}'
-
-                path = [
-                    src_host,
-                    src_leaf,
-                    spine,
-                    super_spine,
-                    dst_spine,
-                    dst_leaf,
-                    dst_host
-                ]
-
-                topo['paths'][path_id] = path
-                path_id += 1
+                    topo['paths'][path_id] = path
+                    path_id += 1
 
         with open('configs/topos/fattreetopo.json', 'w') as f:
             json.dump(topo, f)
         self.topo = topo
 
 def injectTonPcap(net):
-    pps = 1000
-    pcap_dir = 'utils/merged_pcaps'
+    pps = 100
+    pcap_dir = 'utils/experiment_pcaps'
     pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
     ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
+    pcap_files = pcap_files[:len(ingress_hosts)]
     procs = {}
 
     info('*** Starting tcpreplay on ingress hosts\n')
     for host, pcap_file in zip(ingress_hosts, pcap_files):
         pcap_file_path = join(pcap_dir, pcap_file)
         assertIsFile(pcap_file_path)
-        cmd = f'tcpreplay -i {host.defaultIntf()} -t {pcap_file_path}'
+        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap_file_path}'
         info(f'  {host.name}: {cmd}\n')
         procs[host.name] = host.popen(cmd)
         info('\n')
