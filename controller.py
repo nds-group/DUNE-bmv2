@@ -4,7 +4,7 @@ from p4.v1 import p4runtime_pb2
 from p4.v1 import p4runtime_pb2_grpc
 
 import bmpy_utils as bm
-from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions
+from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions, InvalidTableOperation
 
 import queue
 import argparse
@@ -14,6 +14,7 @@ import signal
 
 import os
 import logging
+import time
 
 # Formatter
 FORMAT = "%(asctime)s [%(threadName)s] [%(levelname)s] %(message)s"
@@ -130,18 +131,31 @@ class Controller():
         self.get_registers_from_switch()
 
         self.logger.info('Listening for digest messages')
+        last_processed = time.time()
+        TIMEOUT = 30
         while not shutdown_event.is_set():
+            processed = False
             if not queues[self.key].empty():
                 external_dune_digest = queues[self.key].get()
                 self.logger.debug('Received digest from queue: %s', external_dune_digest)
                 self.insert_flow_table(external_dune_digest)
                 self.clear_registers(external_dune_digest)
+                processed = True
             if self.models is not None and not self.stream_responses.empty():
                 self.logger.debug('Received direct digest')
                 dune_digest = self.stream_responses.get()
                 self.process_digest_entries(dune_digest)
+                processed = True
+            if processed:
+                last_processed = time.time()
+            elif time.time() - last_processed > TIMEOUT:
+                logger = logging.getLogger(Server.__name__)
+                logger.warning('No activity for %d seconds, terminating controller thread: %s', TIMEOUT, self.c_name)
+                self.logger.warning('No activity for %d seconds, shutting down', TIMEOUT)
+                break
     
         self.logger.info('Controller %s shuting down', self.c_name)
+        del(threads[self.key])
         self.stream_thread.join()
 
     def connect_with_grpc(self, grpc_port, device_id):
@@ -238,19 +252,23 @@ class Controller():
 
         action_data = [dune_digest.flow_class.to_bytes(1, 'big')] 
 
-        client.bm_mt_add_entry(
-            cxt_id,
-            'DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass',
-            match_keys,
-            'DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass',
-            action_data,
-            options
-        )
+        try:
+            client.bm_mt_add_entry(
+                cxt_id,
+                'DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass',
+                match_keys,
+                'DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass',
+                action_data,
+                options
+            )
 
-        self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
-        for key in match_keys:
-            self.logger.debug('      Match key: %s', key.exact.key.hex())
-        self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
+            self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
+            for key in match_keys:
+                self.logger.debug('      Match key: %s', key.exact.key.hex())
+            self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
+        except InvalidTableOperation as e:
+            self.logger.error('Failed to insert entry into IsFlowClassKnownLocally table: %s. It probably exists.\n', e)
+            self.logger.error('Match keys: %s', [key.exact.key.hex() for key in match_keys])
 
     def clear_registers(self, dune_digest):
         client = self.thrift_client
@@ -314,7 +332,6 @@ def shutdown(sig, frame):
         thread.join()
 
 class Server():
-    logger = None
 
     def __init__(self, ip, port, topo, log_dir):
         self.ip = ip
@@ -338,13 +355,19 @@ class Server():
         self.server_socket.listen(1)
 
         self.logger.info('Listening for connections')
+        controllers_started = False
         while not shutdown_event.is_set():
             try:
                 conn, _ = self.server_socket.accept()
                 self.logger.info('Accepted a new connection')
                 self.handle_new_connection(conn)
+                controllers_started = True
             except socket.timeout:
                 continue
+            # Terminate server only after controllers have started and all are gone
+            if controllers_started and not threads:
+                self.logger.info('No more controllers running, shutting down server')
+                shutdown_event.set()
         self.logger.info('Closing the server socket')
         self.server_socket.close()
 

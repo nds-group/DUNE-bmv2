@@ -42,6 +42,7 @@ MN_CUSTOM := --custom=$(call join_with_comma,$(MN_CUSTOM_CLASSES))
 
 
 CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
+FATTREE_TOPOLOGY := configs/topos/fattreetopo.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
 TOPO_ARGS := topo=$(TOPOLOGY) \
@@ -111,6 +112,7 @@ $(RUN_DIRS):
 clean: stop
 	$(RMDIR) $(OBJECTS_DIR)
 	$(RMDIR) $(RUN_DIRS)
+	$(RM) $(FATTREE_TOPOLOGY)
 
 
 -include $(DEPS)
