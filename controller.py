@@ -132,7 +132,7 @@ class Controller():
 
         self.logger.info('Listening for digest messages')
         last_processed = time.time()
-        TIMEOUT = 30
+        TIMEOUT = 60
         while not shutdown_event.is_set():
             processed = False
             if not queues[self.key].empty():
@@ -267,7 +267,7 @@ class Controller():
                 self.logger.debug('      Match key: %s', key.exact.key.hex())
             self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
         except InvalidTableOperation as e:
-            self.logger.error('Failed to insert entry into IsFlowClassKnownLocally table: %s. It probably exists.\n', e)
+            self.logger.error('Failed to insert entry into IsFlowClassKnownLocally table: %s. It probably exists.', e)
             self.logger.error('Match keys: %s', [key.exact.key.hex() for key in match_keys])
 
     def clear_registers(self, dune_digest):
@@ -357,6 +357,10 @@ class Server():
         self.logger.info('Listening for connections')
         controllers_started = False
         while not shutdown_event.is_set():
+            # Terminate server only after controllers have started and all are gone
+            if controllers_started and not threads:
+                self.logger.info('No more controllers running, shutting down server')
+                shutdown_event.set()
             try:
                 conn, _ = self.server_socket.accept()
                 self.logger.info('Accepted a new connection')
@@ -364,12 +368,9 @@ class Server():
                 controllers_started = True
             except socket.timeout:
                 continue
-            # Terminate server only after controllers have started and all are gone
-            if controllers_started and not threads:
-                self.logger.info('No more controllers running, shutting down server')
-                shutdown_event.set()
         self.logger.info('Closing the server socket')
         self.server_socket.close()
+        os.kill(os.getpid(), signal.SIGINT)  # Trigger shutdown of controller.py
 
     def handle_new_connection(self, conn):
         self.logger.debug('New connection to register a switch')
