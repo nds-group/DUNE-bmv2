@@ -306,7 +306,6 @@ def injectTonPcap(net):
             break
         else:
             sleep(1)
-    CLI(net)
 
 
 
