@@ -41,7 +41,8 @@ MN_CUSTOM_CLASSES := $(shell find $(MN_DIR) -type f -name '*.py')
 MN_CUSTOM := --custom=$(call join_with_comma,$(MN_CUSTOM_CLASSES))
 
 
-TOPOLOGY := configs/topos/topo_ton.json
+CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
+FATTREE_TOPOLOGY := configs/topos/fattreetopo.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
 TOPO_ARGS := topo=$(TOPOLOGY) \
@@ -49,18 +50,32 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
-			 pcap_dir=$(PCAP_DIR)
+			 pcap_dir=$(PCAP_DIR) \
+			 super_spines=1 \
+			 pods=1 \
+			 spines=2 \
+			 leafs=2 \
+			 hosts_per_leaf=1
 
 
-MN_TOPO_CLASS := dunejson
+MN_TOPO_CLASS := dunefattree
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
-MN_SWITCH := --switch=p4simpleswitchgrpc
-MN_CONTROLLER := --controller=p4controller,topo=$(TOPOLOGY),log_dir=$(LOG_DIR),log_level=${LOG_LEVEL}
+MN_SWITCH := --switch=p4simpleswitchgrpc,log_level=$(LOG_LEVEL)
+MN_CONTROLLER := --controller=p4controller,topo_class=$(MN_TOPO_CLASS),topo=$(CUSTOM_TOPOLOGY),log_dir=$(LOG_DIR),log_level=$(LOG_LEVEL)
 MN_LINK := --link=p4link
+MN_TEST := --test=tonpcap
+
+MN_LOG_LEVEL := -v $(shell echo $(LOG_LEVEL) | tr '[:upper:]' '[:lower:]')
 
 
-MN_ARGS := $(MN_CUSTOM) $(MN_TOPO) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK)
-
+MN_ARGS := $(MN_CUSTOM) \
+		   $(MN_TOPO) \
+		   $(MN_HOST) \
+		   $(MN_SWITCH) \
+		   $(MN_CONTROLLER) \
+		   $(MN_LINK) \
+		   $(MN_TEST) \
+		   $(MN_LOG_LEVEL)
 
 
 .PHONY: all
@@ -69,7 +84,7 @@ all: build
 
 .PHONY: run
 run: build | $(RUN_DIRS)
-	$(MN) $(MN_ARGS) -v debug
+	$(MN) $(MN_ARGS)
 
 
 .PHONY: stop
@@ -97,6 +112,7 @@ $(RUN_DIRS):
 clean: stop
 	$(RMDIR) $(OBJECTS_DIR)
 	$(RMDIR) $(RUN_DIRS)
+	$(RM) $(FATTREE_TOPOLOGY)
 
 
 -include $(DEPS)

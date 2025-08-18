@@ -67,6 +67,7 @@ class P4SimpleSwitchGRPC(Switch):
             self, name, model_config,
             model_dir, objects_dir, log_dir, pcap_dir,
             ingress_port_to_mpls, mpls_to_egress_port,
+            log_level,
             **kwargs
             ):
         Switch.__init__(self, name, **kwargs)
@@ -85,6 +86,7 @@ class P4SimpleSwitchGRPC(Switch):
         self.pcap_dir = pcap_dir
         self.ingress_port_to_mpls = ingress_port_to_mpls
         self.mpls_to_egress_port = mpls_to_egress_port
+        self.log_level = log_level
 
         self.sw_json = os.path.join(objects_dir, self.model_config['p4'] + '.json')
         self.sw_p4info = os.path.join(objects_dir, self.model_config['p4'] + '.p4.p4info.txtpb')
@@ -183,18 +185,32 @@ class P4SimpleSwitchGRPC(Switch):
         return self.controller_is_connected
 
     def populate_tables(sw):
-        if sw.models is not None:
+        log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.log')
+        inference_disabled = sw.models is None
+
+        args = ['python', 'upload_p4prog_to_switch.py']
+        args += ['--p4info', sw.sw_p4info]
+        args += ['--json', sw.sw_json]
+        args += ['--grpc-port', str(sw.grpc_port)]
+        args += ['--device-id', str(sw.device_id)]
+        args += ['--inference-disabled', str(inference_disabled)]
+        args += ['--log-level', sw.log_level]
+
+        args += ['>', log_file, '2>&1']
+
+        populate_cmd = ' '.join(args)
+        sw.cmd(populate_cmd)
+
+        if inference_disabled:
+            args = ['echo', '"The inference pipeline is disabled in this switch"']
+        else:
             args = ['python', 'convert_RF_and_populate_tables.py']
-            args += ['--p4info', sw.sw_p4info]
-            args += ['--json', sw.sw_json]
             args += ['--grpc-port', str(sw.grpc_port)]
             args += ['--device-id', str(sw.device_id)]
+            args += ['--log-level', sw.log_level]
             args += ['--models'] + sw.models
-        else:
-            args = ['echo', '"The inference pipeline is disabled in this switch"']
 
-        log_file = os.path.join(sw.log_dir, 'populate_' + sw.name + '.txt')
-        args += ['>', log_file, '2>&1']
+        args += ['>>', log_file, '2>&1']
 
         populate_cmd = ' '.join(args)
         sw.cmd(populate_cmd)
@@ -208,12 +224,11 @@ class P4SimpleSwitchGRPC(Switch):
                     mpls_to_egress_port.flush()
 
                     args = ['python', 'populate_forwarding_tables.py']
-                    args += ['--p4info', sw.sw_p4info]
-                    args += ['--json', sw.sw_json]
                     args += ['--grpc-port', str(sw.grpc_port)]
                     args += ['--device-id', str(sw.device_id)]
                     args += ['--ingress-port-to-mpls', ingress_port_to_mpls.name]
                     args += ['--mpls-to-egress-port', mpls_to_egress_port.name]
+                    args += ['--log-level', sw.log_level]
 
                     args += ['>>', log_file, '2>&1']
 
@@ -221,9 +236,10 @@ class P4SimpleSwitchGRPC(Switch):
                     sw.cmd(populate_cmd)
 
     def advertise_to_controller(self):
+        # TODO/WARNING : If a switch as no inference pipeline does it need to connect to the controller ?
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((self.controller.ip, self.controller.port))
-            data = f'{self.grpc_port},{self.thrift_port},{self.device_id}'
+            data = f'{self.grpc_port},{self.thrift_port},{self.device_id},{self.name},{self.models}'
             s.sendall(data.encode())
             print('Registering switch', self.name, 'with controller at', self.controller.ip, ':', self.controller.port)
 
@@ -237,20 +253,24 @@ class P4Controller(Controller):
     ctrl_path = 'controller.py'
     assertIsFile(ctrl_path)
 
-    def __init__(self, name, topo, log_dir, **kwargs):
+    def __init__(self, name, topo_class, topo, log_dir, log_level, **kwargs):
         Controller.__init__(self, name, **kwargs)
+        if topo_class == 'dunefattree':
+            topo = 'configs/topos/fattreetopo.json'
         assertIsFile(topo)
         with open(topo, 'r') as file:
             json.load(file)
         self.topo = topo
         assertIsDir(log_dir)
         self.log_dir = log_dir
+        self.log_level = log_level
 
         args = ['python', P4Controller.ctrl_path]
         args += ['--ip', str(self.ip)]
         args += ['--port', str(self.port)]
         args += ['--topo', self.topo]
         args += ['--log-dir', self.log_dir]
+        args += ['--log-level', self.log_level]
 
         self.start_cmd = ' '.join(args)
 

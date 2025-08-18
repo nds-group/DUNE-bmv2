@@ -3,7 +3,8 @@ import argparse
 import json
 
 import logging
-logging.basicConfig(level=logging.INFO)
+# Formatter
+FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 
 def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
     if ingress_port_to_mpls is not None:
@@ -15,7 +16,7 @@ def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
                     action='DuneIngress.Forwarding.SetMplsLabel'
                     )
             entry.match['std_meta.ingress_port'] = port
-            entry.action['label'] = mpls
+            entry.action['label'] = str(mpls)
             entry.priority = 0
             entry.insert()
     if mpls_to_egress_port is not None:
@@ -35,13 +36,12 @@ def populate_forwarding_tables(ingress_port_to_mpls, mpls_to_egress_port):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--p4info", required=True)
-    parser.add_argument("--json", required=True)
     parser.add_argument("--grpc-port", required=True)
     parser.add_argument("--device-id", required=True, type=int)
 
     parser.add_argument("--ingress-port-to-mpls", required=True)
     parser.add_argument("--mpls-to-egress-port", required=True)
+    parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
     return args
 
@@ -49,6 +49,11 @@ def parse_args():
 def main():
     #TODO add log to say we starting new populating ...
     args = parse_args()
+
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+
+    logging.basicConfig(level=log_level, format=FORMAT)
 
     # Connecting to the switch
     logging.info('Establishing GRPC connection')

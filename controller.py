@@ -4,7 +4,7 @@ from p4.v1 import p4runtime_pb2
 from p4.v1 import p4runtime_pb2_grpc
 
 import bmpy_utils as bm
-from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions
+from bm_runtime.standard.ttypes import BmMatchParam, BmMatchParamExact, BmAddEntryOptions, InvalidTableOperation
 
 import queue
 import argparse
@@ -14,6 +14,7 @@ import signal
 
 import os
 import logging
+import time
 
 # Formatter
 FORMAT = "%(asctime)s [%(threadName)s] [%(levelname)s] %(message)s"
@@ -24,7 +25,10 @@ from collections import namedtuple
 class ControllerContext:
     def __init__(self):
         self._lock = threading.Lock()
-        self.topo = None
+        self.paths = None
+        self.switches = None
+        self.hosts = None
+        self.inference_switches = set()
 
     def set_paths(self, paths_dict):
         with self._lock:
@@ -33,6 +37,30 @@ class ControllerContext:
     def get_paths(self):
         with self._lock:
             return self.paths
+
+    def set_switches(self, switches_dict):
+        with self._lock:
+            self.switches = switches_dict
+
+    def get_switches(self):
+        with self._lock:
+            return self.switches
+
+    def add_inference_switch(self, switch):
+        with self._lock:
+            self.inference_switches.add(switch)
+
+    def get_inference_switches(self):
+        with self._lock:
+            return list(self.inference_switches)
+
+    def set_hosts(self, hosts_dict):
+        with self._lock:
+            self.hosts = hosts_dict
+
+    def get_hosts(self):
+        with self._lock:
+            return self.hosts
 
 context = ControllerContext()
 
@@ -58,8 +86,8 @@ shutdown_event = threading.Event()
 class Controller():
     digest_name = 'FlowDigest_t'
 
-    def __init__(self, grpc_port, thrift_port, device_id, key, log_dir):
-        self.c_name = 'c' + device_id
+    def __init__(self, grpc_port, thrift_port, device_id, name, models, log_dir):
+        self.c_name = 'c_' + name
         threading.current_thread().name = self.c_name
         
         self.logger = logging.getLogger(self.c_name)
@@ -68,41 +96,66 @@ class Controller():
         handler = logging.FileHandler(log_file, mode='w')
         formatter = logging.Formatter(FORMAT)
         handler.setFormatter(formatter)
+        self.logger.handlers.clear()
         self.logger.addHandler(handler)
+        self.logger.propagate = False
 
         self.logger.info('Controller %s started', self.c_name)
+        self.logger.debug('\t GRPC port: %s', grpc_port)
+        self.logger.debug('\t Thrift port: %s', thrift_port)
+        self.logger.debug('\t Device ID: %s', device_id)
 
-        self.key = key
+        try:
+            self.models = models
+            self.key = name
+            self.device_id = int(device_id)
 
-        # Thrift connection to the switch
-        # (because registers not implemented in GRPC)
-        # thrift_client: Client = bm.thrift_connect_standard(
-        self.logger.info('Connecting with thrift')
-        self.thrift_client = bm.thrift_connect_standard(
-                thrift_ip='127.0.0.1',
-                thrift_port=thrift_port,
-                )
-        self.connect_with_grpc(grpc_port, int(device_id))
-        self.get_p4info(int(device_id))
-        self.main()
+            # Thrift connection to the switch
+            # (because registers not implemented in GRPC)
+            # thrift_client: Client = bm.thrift_connect_standard(
+            self.logger.info('Connecting with thrift')
+            self.thrift_client = bm.thrift_connect_standard(
+                    thrift_ip='127.0.0.1',
+                    thrift_port=thrift_port,
+                    )
+            self.connect_with_grpc(grpc_port, int(device_id))
+            self.get_p4info()
+            self.main()
+        except Exception as e:
+            self.logger.exception(e)
 
     def main(self):
-        self.build_digest_field_map()
+        if self.models is not None:
+            self.build_digest_field_map()
+
         self.get_registers_from_switch()
 
         self.logger.info('Listening for digest messages')
+        last_processed = time.time()
+        TIMEOUT = 60
         while not shutdown_event.is_set():
+            processed = False
             if not queues[self.key].empty():
                 external_dune_digest = queues[self.key].get()
                 self.logger.debug('Received digest from queue: %s', external_dune_digest)
                 self.insert_flow_table(external_dune_digest)
                 self.clear_registers(external_dune_digest)
-            if not self.stream_responses.empty():
+                processed = True
+            if self.models is not None and not self.stream_responses.empty():
                 self.logger.debug('Received direct digest')
                 dune_digest = self.stream_responses.get()
                 self.process_digest_entries(dune_digest)
+                processed = True
+            if processed:
+                last_processed = time.time()
+            elif time.time() - last_processed > TIMEOUT:
+                logger = logging.getLogger(Server.__name__)
+                logger.warning('No activity for %d seconds, terminating controller thread: %s', TIMEOUT, self.c_name)
+                self.logger.warning('No activity for %d seconds, shutting down', TIMEOUT)
+                break
     
         self.logger.info('Controller %s shuting down', self.c_name)
+        del(threads[self.key])
         self.stream_thread.join()
 
     def connect_with_grpc(self, grpc_port, device_id):
@@ -153,9 +206,9 @@ class Controller():
         assert response.HasField('arbitration')
         self.logger.info('GRPC connection with the switch established')
 
-    def get_p4info(self, device_id):
+    def get_p4info(self):
         req = p4runtime_pb2.GetForwardingPipelineConfigRequest()
-        req.device_id = device_id
+        req.device_id = self.device_id
         req.response_type =  p4runtime_pb2.GetForwardingPipelineConfigRequest.P4INFO_AND_COOKIE
         resp = self.stub.GetForwardingPipelineConfig(req)
 
@@ -199,19 +252,23 @@ class Controller():
 
         action_data = [dune_digest.flow_class.to_bytes(1, 'big')] 
 
-        client.bm_mt_add_entry(
-            cxt_id,
-            'DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass',
-            match_keys,
-            'DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass',
-            action_data,
-            options
-        )
+        try:
+            client.bm_mt_add_entry(
+                cxt_id,
+                'DuneIngress.Inference.IsFlowClassKnownLocally.FlowClass',
+                match_keys,
+                'DuneIngress.Inference.IsFlowClassKnownLocally.MetaSetFlowClass',
+                action_data,
+                options
+            )
 
-        self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
-        for key in match_keys:
-            self.logger.debug('      Match key: %s', key.exact.key.hex())
-        self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
+            self.logger.info(f'Inserted entry into IsFlowClassKnownLocally table')
+            for key in match_keys:
+                self.logger.debug('      Match key: %s', key.exact.key.hex())
+            self.logger.debug('      Action parameters: %s', [*map(lambda data: data.hex(), action_data)])
+        except InvalidTableOperation as e:
+            self.logger.error('Failed to insert entry into IsFlowClassKnownLocally table: %s. It probably exists.', e)
+            self.logger.error('Match keys: %s', [key.exact.key.hex() for key in match_keys])
 
     def clear_registers(self, dune_digest):
         client = self.thrift_client
@@ -223,7 +280,7 @@ class Controller():
     def process_digest_entries(self, response):
         if response.HasField('digest'):
             digest = response.digest
-            self.logger.info('Received digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
+            self.logger.debug('Processing digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
 
             for entry in digest.data:
                 dune_digest = self.parse_dune_digest_entry(entry)
@@ -232,7 +289,6 @@ class Controller():
                     queues[sw].put(dune_digest)
 
             self.logger.info('Handled digest (ID: %s, List ID: %s)', digest.digest_id, digest.list_id)
-            self.logger.debug('      Digest content: %s', dune_digest)
 
             self.send_digest_ack(digest.digest_id, digest.list_id)
         else:
@@ -258,8 +314,8 @@ class Controller():
         except KeyError:
             self.logger.error('No path corresponding to mpls label %s', mpls_label)
             shutdown_event.set()
-        # WARNING : We assume switches names are of the shape 'sN'
-        switches = filter(lambda node: 's' == node[0], nodes)
+        switches = filter(lambda node: node not in context.get_hosts(), nodes)
+        switches = filter(lambda switch: switch in context.get_inference_switches(), switches)
         return list(switches)
 
     def send_digest_ack(self, digest_id, list_id):
@@ -276,7 +332,6 @@ def shutdown(sig, frame):
         thread.join()
 
 class Server():
-    logger = None
 
     def __init__(self, ip, port, topo, log_dir):
         self.ip = ip
@@ -300,15 +355,22 @@ class Server():
         self.server_socket.listen(1)
 
         self.logger.info('Listening for connections')
+        controllers_started = False
         while not shutdown_event.is_set():
+            # Terminate server only after controllers have started and all are gone
+            if controllers_started and not threads:
+                self.logger.info('No more controllers running, shutting down server')
+                shutdown_event.set()
             try:
                 conn, _ = self.server_socket.accept()
                 self.logger.info('Accepted a new connection')
                 self.handle_new_connection(conn)
+                controllers_started = True
             except socket.timeout:
                 continue
         self.logger.info('Closing the server socket')
         self.server_socket.close()
+        os.kill(os.getpid(), signal.SIGINT)  # Trigger shutdown of controller.py
 
     def handle_new_connection(self, conn):
         self.logger.debug('New connection to register a switch')
@@ -316,26 +378,31 @@ class Server():
             data = conn.recv(1024).decode()
             if data:
                 self.logger.debug('Received registration data')
-                grpc_port, thrift_port, device_id = data.strip().split(',')
+                grpc_port, thrift_port, device_id, name, models = data.strip().split(',')
+                models = None if models == 'None' else models
                 ack = 'ACK'
-                self.logger.debug('Sending registration data ACK to s%s', device_id)
+                self.logger.debug('Sending registration data ACK to %s', name)
                 conn.sendall(ack.encode())
-                self.add_threaded_controller(grpc_port, thrift_port, device_id)
+                self.add_threaded_controller(grpc_port, thrift_port, device_id, name, models)
         except Exception as e:
             self.logger.info(e)
         finally:
             self.logger.debug('Switch registered, closing connnection')
             conn.close()
 
-    def add_threaded_controller(self, grpc_port, thrift_port, device_id):
-        key = 's' + device_id
+    def add_threaded_controller(self, grpc_port, thrift_port, device_id, name, models):
+        # key = 's' + device_id
+        key = name
         assert key not in threads, f'Controller thread already exists for key {key}'
+        if models is not None:
+            context.add_inference_switch(key)
         thread = threading.Thread(
                 target=Controller,
                 args=(grpc_port,
                       thrift_port,
                       device_id,
                       key,
+                      models,
                       self.log_dir,
                       )
                 )
@@ -362,11 +429,21 @@ def main():
 
     # Set up logging
     log_level = getattr(logging, args.log_level.upper())
+
     logging.basicConfig(level=log_level, format=FORMAT)
+    logging.info('Log level set to %s', args.log_level.upper())
 
     with open(args.topo, 'r') as file:
-        paths = json.load(file)['paths']
-        context.set_paths(paths)  # replace global topo
+        topo = json.load(file)
+        paths = topo['paths']
+        switches = topo['switches']
+        hosts = topo['hosts']
+        logging.debug('Loaded switches: %s', switches)
+        context.set_switches(switches)
+        logging.debug('Loaded hosts: %s', hosts)
+        context.set_hosts(hosts)
+        logging.debug('Loaded paths: %s', paths)
+        context.set_paths(paths)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)

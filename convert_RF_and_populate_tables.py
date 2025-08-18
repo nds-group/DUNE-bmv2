@@ -10,7 +10,8 @@ pd.options.mode.chained_assignment = None  # default='warn'
 warnings.filterwarnings("ignore")
 
 import logging
-logging.basicConfig(level=logging.INFO)
+# Formatter
+FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 
 ## definition of useful functions
 ## gets all splits and conditions
@@ -388,12 +389,11 @@ def upload_model(model, feature_offset, code_table_offset, index):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--p4info", required=True)
-    parser.add_argument("--json", required=True)
     parser.add_argument("--grpc-port", required=True)
     parser.add_argument("--device-id", required=True, type=int)
 
     parser.add_argument("--models", nargs="+", required=True)
+    parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
     return args
 
@@ -401,13 +401,17 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # Set up logging
+    log_level = getattr(logging, args.log_level.upper())
+
+    logging.basicConfig(level=log_level, format=FORMAT)
+
     # Connecting to the switch
     logging.info('Establishing GRPC connection')
     p4.setup(
         device_id=args.device_id,
         grpc_addr=f"0.0.0.0:{args.grpc_port}",
         election_id=(0, 1),  # (high, low)
-        config=p4.FwdPipeConfig(args.p4info, args.json),
         verbose=False,
     )
 
@@ -422,14 +426,6 @@ def main():
         )
         feature_offset += len_features
         code_table_offset += len_code_tables
-
-    # Configure digest
-    d = p4.DigestEntry("FlowDigest_t")
-    d.ack_timeout_ns = 10 * 1000000000
-    d.max_timeout_ns = 10 * 1000000000
-    d.max_list_size = 10000
-    d.insert()
-    logging.info('Digest entry for FlowDigest_t inserted')
 
     p4.teardown()
 
