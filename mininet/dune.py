@@ -294,18 +294,19 @@ def injectTonPcap(net):
 
     info('*** All replays finished. Waiting for controller to finish.\n')
     # Check if controller is running
-    import subprocess
-    while True:
-        controller_running = subprocess.call(
-            ['pgrep', '-f', 'controller.py'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ) == 0
-        if not controller_running:
-            info('Controller finished running\n')
-            break
-        else:
-            sleep(1)
+    CLI(net)
+    # import subprocess
+    # while True:
+    #     controller_running = subprocess.call(
+    #         ['pgrep', '-f', 'controller.py'],
+    #         stdout=subprocess.DEVNULL,
+    #         stderr=subprocess.DEVNULL
+    #     ) == 0
+    #     if not controller_running:
+    #         info('Controller finished running\n')
+    #         break
+    #     else:
+    #         sleep(1)
 
 
 
