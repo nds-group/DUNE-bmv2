@@ -362,20 +362,6 @@ def injectTonPcap(net):
     injectPcap(net, pcap_dir, pps=pps)
     info('*** All replays finished. Waiting for controller to finish.\n')
 
-    # Check if controller is running
-    import subprocess
-    while True:
-        controller_running = subprocess.call(
-            ['pgrep', '-f', 'controller.py'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ) == 0
-        if not controller_running:
-            info('Controller finished running\n')
-            break
-        else:
-            sleep(1)
-    DuneCLI(net)
 
 
 # Override the default CLI class globally

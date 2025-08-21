@@ -53,8 +53,8 @@ TOPO_ARGS := topo=$(TOPOLOGY) \
 			 pcap_dir=$(PCAP_DIR) \
 			 super_spines=1 \
 			 pods=1 \
-			 spines=2 \
-			 leafs=2 \
+			 spines=1 \
+			 leafs=1 \
 			 hosts_per_leaf=1
 
 
@@ -74,7 +74,6 @@ MN_ARGS := $(MN_CUSTOM) \
 		   $(MN_SWITCH) \
 		   $(MN_CONTROLLER) \
 		   $(MN_LINK) \
-		   $(MN_TEST) \
 		   $(MN_LOG_LEVEL)
 
 
@@ -86,11 +85,13 @@ all: build
 run: build | $(RUN_DIRS)
 	$(MN) $(MN_ARGS) 2>&1 | tee $(LOG_DIR)/mn.log 
 
+.PHONY: run-test
+run-test: override MN_ARGS += $(MN_TEST)
+run-test: run
 
 .PHONY: stop
 stop:
 	$(MN) -c
-
 
 .PHONY: build
 build: $(OBJECTS)
