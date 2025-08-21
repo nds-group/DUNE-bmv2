@@ -1,5 +1,6 @@
 from mininet.node import Host, Switch, Controller
 from mininet.moduledeps import pathCheck
+from mininet.log import info
 
 from os.path import isfile, isdir
 from os import access, R_OK
@@ -241,11 +242,11 @@ class P4SimpleSwitchGRPC(Switch):
             s.connect((self.controller.ip, self.controller.port))
             data = f'{self.grpc_port},{self.thrift_port},{self.device_id},{self.name},{self.models}'
             s.sendall(data.encode())
-            print('Registering switch', self.name, 'with controller at', self.controller.ip, ':', self.controller.port)
+            info('Registering switch', self.name, 'with controller at', self.controller.ip, ':', self.controller.port, '\n')
 
             ack = s.recv(1024).decode()
             self.controller_is_connected = ack == 'ACK'
-            print(f'Received ack from controller', self.controller.ip, ':', self.controller.port, 'for switch', self.name)
+            info(f'Received ack from controller', self.controller.ip, ':', self.controller.port, 'for switch', self.name, '\n')
 
 switches = { 'p4simpleswitchgrpc' : P4SimpleSwitchGRPC }
 

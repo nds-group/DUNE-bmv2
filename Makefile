@@ -84,7 +84,7 @@ all: build
 
 .PHONY: run
 run: build | $(RUN_DIRS)
-	$(MN) $(MN_ARGS)
+	$(MN) $(MN_ARGS) 2>&1 | tee $(LOG_DIR)/mn.log 
 
 
 .PHONY: stop

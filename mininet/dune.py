@@ -268,9 +268,8 @@ class DuneFatTree(Dune):
             json.dump(topo, f)
         self.topo = topo
 
-def injectTonPcap(net):
-    pps = 100
-    pcap_dir = 'utils/experiment_pcaps'
+def injectPcap(net, pcap_dir=None, pps=100):
+    debug('*** Pcap directory: {}\n'.format(pcap_dir))
     pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
     ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
     pcap_files = pcap_files[:len(ingress_hosts)]
@@ -292,24 +291,95 @@ def injectTonPcap(net):
         info(f'  still running: {still_running}\n')
         sleep(0.5)
 
+
+class DuneCLI(CLI):
+    def do_toniot_test(self, line):
+        """Run tcpreplay on all ingress hosts with one pcap per host.
+           Usage: toniot_test [pcap_dir (default: utils/experiment_pcaps)] [pps (default: 100)]
+        """
+        args = line.split()
+        if len(args) == 0:
+            pcap_dir = 'utils/experiment_pcaps'
+        else:
+            pcap_dir = args[0]
+
+        if not isdir(pcap_dir):
+            info(f"Error: pcap directory '{pcap_dir}' not found\n")
+            return
+
+        try:
+            pps = int(args[1]) if len(args) > 1 else 100
+        except ValueError:
+            info("Error: pps must be an integer\n")
+            return
+
+        info("*** Starting traffic injection\n")
+        injectPcap(self.mn, pcap_dir, pps=pps)
+
+    def do_linear_toniot_test(self, line):
+        """Run tcpreplay of a single pcap on a specific host.
+           Usage: linear_toniot_test <host> <pcap> [pps]
+        """
+        args = line.split()
+        if len(args) < 2:
+            info("Usage: linear_toniot_test <host> <pcap> [pps]\n")
+            return
+
+        hostName, pcap = args[0], args[1]
+        try:
+            pps = int(args[2]) if len(args) > 2 else 100
+        except ValueError:
+            info("Error: pps must be an integer\n")
+            return
+
+        if hostName not in [h.name for h in self.mn.hosts]:
+            info(f"Error: host '{hostName}' not found\n")
+            return
+
+        if not isfile(pcap):
+            alt = join('utils/experiment_pcaps', pcap)
+            if isfile(alt):
+                pcap = alt
+            else:
+                info(f"Error: pcap file '{pcap}' not found\n")
+                return
+
+        info(f"*** host: {hostName}\n")
+        info(f"*** pcap: {pcap}\n")
+        info(f"*** pps: {pps}\n")
+
+        host = self.mn.get(hostName)
+        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap}'
+        info(f'  {host.name}: {cmd}\n')
+        host.cmd(cmd)
+
+
+def injectTonPcap(net):
+    pps = 100
+    pcap_dir = 'utils/experiment_pcaps'
+
+
+    injectPcap(net, pcap_dir, pps=pps)
     info('*** All replays finished. Waiting for controller to finish.\n')
+
     # Check if controller is running
-    CLI(net)
-    # import subprocess
-    # while True:
-    #     controller_running = subprocess.call(
-    #         ['pgrep', '-f', 'controller.py'],
-    #         stdout=subprocess.DEVNULL,
-    #         stderr=subprocess.DEVNULL
-    #     ) == 0
-    #     if not controller_running:
-    #         info('Controller finished running\n')
-    #         break
-    #     else:
-    #         sleep(1)
+    import subprocess
+    while True:
+        controller_running = subprocess.call(
+            ['pgrep', '-f', 'controller.py'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        ) == 0
+        if not controller_running:
+            info('Controller finished running\n')
+            break
+        else:
+            sleep(1)
+    DuneCLI(net)
 
 
-
+# Override the default CLI class globally
+CLI = DuneCLI
 
 
 tests = { 'tonpcap': injectTonPcap }

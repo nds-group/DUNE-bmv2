@@ -64,6 +64,7 @@ if __name__ == "__main__":
 
     classes = ['normal', 'ddos', 'ransomware', 'xss', 'scanning', 'injection', 'password']
     results_df = pd.read_csv(args.results)
+    print(f"Collision count: {results_df['collision'].sum()}")
     ground_truth_df = pd.read_csv(args.ground_truth)
 
     c_report = compute_classification_report(results_df, ground_truth_df, classes)
