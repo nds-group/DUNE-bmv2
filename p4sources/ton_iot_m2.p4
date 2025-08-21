@@ -76,7 +76,7 @@ control UpdateAndGetStatefullFeatures(
     register<bit<16>>(NB_REG_ENTRIES) flows_min_length;
     action GetUpdateMinLength () {
         flows_min_length.read(min_length, hashes.reg_idx32);
-        if (new_flow || min_length < hdr.ipv4.total_length) {
+        if (new_flow || min_length > hdr.ipv4.total_length) {
             min_length = hdr.ipv4.total_length;
             flows_min_length.write(hashes.reg_idx32, min_length);
         }
