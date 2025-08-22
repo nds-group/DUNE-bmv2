@@ -131,28 +131,16 @@ class Controller():
         self.get_registers_from_switch()
 
         self.logger.info('Listening for digest messages')
-        last_processed = time.time()
-        TIMEOUT = 60
         while not shutdown_event.is_set():
-            processed = False
             if not queues[self.key].empty():
                 external_dune_digest = queues[self.key].get()
                 self.logger.debug('Received digest from queue: %s', external_dune_digest)
                 self.insert_flow_table(external_dune_digest)
                 self.clear_registers(external_dune_digest)
-                processed = True
             if self.models is not None and not self.stream_responses.empty():
                 self.logger.debug('Received direct digest')
                 dune_digest = self.stream_responses.get()
                 self.process_digest_entries(dune_digest)
-                processed = True
-            if processed:
-                last_processed = time.time()
-            elif time.time() - last_processed > TIMEOUT:
-                logger = logging.getLogger(Server.__name__)
-                logger.warning('No activity for %d seconds, terminating controller thread: %s', TIMEOUT, self.c_name)
-                self.logger.warning('No activity for %d seconds, shutting down', TIMEOUT)
-                break
     
         self.logger.info('Controller %s shuting down', self.c_name)
         del(threads[self.key])
