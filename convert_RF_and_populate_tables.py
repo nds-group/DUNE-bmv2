@@ -334,9 +334,9 @@ def upload_model(model, feature_offset, code_table_offset, index):
 
     try:
         logging.info('Attempting to populate a voting table')
-        for i in range(1, 3):
-            for j in range(1, 3):
-                for k in range(1, 3):
+        for i in range(1, 4):
+            for j in range(1, 4):
+                for k in range(1, 4):
                     if (i != j) & (j != k) & (i != k):
                         pass
                     else:
