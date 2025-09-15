@@ -110,15 +110,14 @@ class Dune(Topo, ABC):
         pass
 
     def debugTopo(self):
-        debug(f'*** Hosts: {self.topo['hosts']}\n')
-        debug(f'*** Switches: {self.topo['switches']}\n')
+        debug(f"*** Hosts: {self.topo['hosts']}\n")
+        debug(f"*** Switches: {self.topo['switches']}\n")
         debug(f'*** Links: ***\n')
         for link in self.topo['links']:
             debug(f'  {link[0]} <-> {link[1]}\n')
         debug(f'*** Paths: ***\n')
         for path_id, path in self.topo['paths'].items():
             debug(f'  {path_id}: {path}\n')
-
 
     def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
         assertIsFile(models)
