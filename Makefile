@@ -47,12 +47,16 @@ CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
 FATTREE_TOPOLOGY := configs/topos/fattreetopo.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
-TOPO_ARGS := topo=$(TOPOLOGY) \
-			 models=$(MODELS) \
+TEST_PPS ?= 100
+PKT_NUM ?=
+
+TOPO_ARGS := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
 			 pcap_dir=$(PCAP_DIR) \
+			 test_pps=$(TEST_PPS) \
+			 pkt_num=$(PKT_NUM) \
 			 super_spines=1 \
 			 pods=1 \
 			 spines=1 \
@@ -105,8 +109,7 @@ results:
 .PHONY: run-test
 run-test: override MN_ARGS += $(MN_TEST)
 run-test: run
-	results
-
+	$(MAKE) results
 
 .PHONY: stop
 stop:
@@ -130,10 +133,13 @@ $(RUN_DIRS):
 
 .PHONY: clean
 clean: stop
-	$(RMDIR) $(OBJECTS_DIR)
 	$(RMDIR) $(RUN_DIRS)
 	$(RM) $(FATTREE_TOPOLOGY)
 	$(RM) $(RESULTS_FILE)
+
+.PHONY: clean-all
+clean-all: clean
+	$(RMDIR) $(OBJECTS_DIR)
 
 
 -include $(DEPS)
