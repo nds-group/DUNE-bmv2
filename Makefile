@@ -3,7 +3,6 @@ RM    := rm -f
 RMDIR := rm -fr
 
 
-
 SOURCES_DIR := ./p4sources
 INCLUDE_DIR := ./p4include
 OBJECTS_DIR := ./p4objects
@@ -18,6 +17,9 @@ RUN_DIRS := $(PCAP_DIR) $(LOG_DIR)
 SOURCES := $(wildcard $(SOURCES_DIR)/*.p4)
 OBJECTS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.json)
 DEPS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.d)
+RESULTS_FILE := ./results.txt
+COMBINED_PCAPS_FILE := ./pcaps/combined.csv
+GROUND_TRUTH_FILE := /nas_storage/shared/ToN-IoT/ToN_IoT_Test_Flow_PktCounts.csv 
 
 
 
@@ -77,6 +79,15 @@ MN_ARGS := $(MN_CUSTOM) \
 		   $(MN_LOG_LEVEL)
 
 
+PROCESS_PCAPS := ./utils/process_result_pcaps.sh
+COMPUTE_SCORES := python3 ./utils/calculate_score.py --results $(COMBINED_PCAPS_FILE) --ground-truth $(GROUND_TRUTH_FILE)
+ARCHIVE_EXPERIMENT := tar -cvzf experiment.tar.gz \
+		                $(PCAP_DIR) \
+				$(LOG_DIR) \
+				Makefile \
+				$(RESULTS_FILE)
+
+
 .PHONY: all
 all: build
 
@@ -85,9 +96,17 @@ all: build
 run: build | $(RUN_DIRS)
 	$(MN) $(MN_ARGS) 2>&1 | tee $(LOG_DIR)/mn.log 
 
+.PHONY: results
+results: 
+	   $(PROCESS_PCAPS)
+	   $(COMPUTE_SCORES) 2>&1 >> $(RESULTS_FILE)
+	   $(ARCHIVE_EXPERIMENT)
+
 .PHONY: run-test
 run-test: override MN_ARGS += $(MN_TEST)
 run-test: run
+	results
+
 
 .PHONY: stop
 stop:
@@ -114,6 +133,7 @@ clean: stop
 	$(RMDIR) $(OBJECTS_DIR)
 	$(RMDIR) $(RUN_DIRS)
 	$(RM) $(FATTREE_TOPOLOGY)
+	$(RM) $(RESULTS_FILE)
 
 
 -include $(DEPS)
