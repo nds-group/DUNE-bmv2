@@ -17,7 +17,6 @@ RUN_DIRS := $(PCAP_DIR) $(LOG_DIR)
 SOURCES := $(wildcard $(SOURCES_DIR)/*.p4)
 OBJECTS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.json)
 DEPS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.d)
-RESULTS_FILE := ./results.txt
 COMBINED_PCAPS_FILE := ./pcaps/combined.csv
 GROUND_TRUTH_FILE := /nas_storage/shared/ToN-IoT/ToN_IoT_Test_Flow_PktCounts.csv 
 
@@ -49,6 +48,7 @@ MODELS := configs/models/ton.json
 MODELS_DIR := ./models
 TEST_PPS ?= 100
 PKT_NUM ?=
+RESULTS_FILE := results_$(TEST_PPS).txt
 
 TOPO_ARGS := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
@@ -57,19 +57,32 @@ TOPO_ARGS := models=$(MODELS) \
 			 pcap_dir=$(PCAP_DIR) \
 			 test_pps=$(TEST_PPS) \
 			 pkt_num=$(PKT_NUM) \
+			 super_spines=2 \
+			 pods=4 \
+			 spines=4 \
+			 leafs=6 \
+			 hosts_per_leaf=2
+
+TOPO_ARGS_LINEAR := models=$(MODELS) \
+			 models_dir=$(MODELS_DIR) \
+			 objects_dir=$(OBJECTS_DIR) \
+			 log_dir=$(LOG_DIR) \
+			 pcap_dir=$(PCAP_DIR) \
+			 test_pcap_dir=./linear_pcaps \
+			 test_pps=$(TEST_PPS) \
+			 pkt_num=$(PKT_NUM) \
 			 super_spines=1 \
 			 pods=1 \
 			 spines=1 \
 			 leafs=1 \
 			 hosts_per_leaf=1
 
-
 MN_TOPO_CLASS := dunefattree
 MN_TOPO := --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS))
 MN_SWITCH := --switch=p4simpleswitchgrpc,log_level=$(LOG_LEVEL)
 MN_CONTROLLER := --controller=p4controller,topo_class=$(MN_TOPO_CLASS),topo=$(CUSTOM_TOPOLOGY),log_dir=$(LOG_DIR),log_level=$(LOG_LEVEL)
 MN_LINK := --link=p4link
-MN_TEST := --test=tonpcap
+MN_TEST := 
 
 MN_LOG_LEVEL := -v $(shell echo $(LOG_LEVEL) | tr '[:upper:]' '[:lower:]')
 
@@ -85,7 +98,7 @@ MN_ARGS := $(MN_CUSTOM) \
 
 PROCESS_PCAPS := ./utils/process_result_pcaps.sh
 COMPUTE_SCORES := python3 ./utils/calculate_score.py --results $(COMBINED_PCAPS_FILE) --ground-truth $(GROUND_TRUTH_FILE)
-ARCHIVE_EXPERIMENT := tar -cvzf experiment.tar.gz \
+ARCHIVE_EXPERIMENT := tar -cvzf experiment_$(TEST_PPS).tar.gz \
 		                $(PCAP_DIR) \
 				$(LOG_DIR) \
 				Makefile \
@@ -103,12 +116,17 @@ run: build | $(RUN_DIRS)
 .PHONY: results
 results: 
 	   $(PROCESS_PCAPS)
-	   $(COMPUTE_SCORES) 2>&1 >> $(RESULTS_FILE)
+	   $(COMPUTE_SCORES) 2>&1 > $(RESULTS_FILE)
 	   $(ARCHIVE_EXPERIMENT)
 
 .PHONY: run-test
-run-test: override MN_ARGS += $(MN_TEST)
+run-test: override MN_ARGS += --test=tonfattree
 run-test: run
+	$(MAKE) results
+
+.PHONY: run-linear-test
+run-linear-test: override MN_ARGS := $(MN_CUSTOM) --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS_LINEAR)) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK) $(MN_LOG_LEVEL) --test=tonlinear
+run-linear-test: run
 	$(MAKE) results
 
 .PHONY: stop
@@ -135,11 +153,11 @@ $(RUN_DIRS):
 clean: stop
 	$(RMDIR) $(RUN_DIRS)
 	$(RM) $(FATTREE_TOPOLOGY)
-	$(RM) $(RESULTS_FILE)
 
 .PHONY: clean-all
 clean-all: clean
 	$(RMDIR) $(OBJECTS_DIR)
+	$(RM) $(RESULTS_FILE)
 
 
 -include $(DEPS)

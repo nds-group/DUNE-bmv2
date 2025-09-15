@@ -134,6 +134,8 @@ class Dune(Topo, ABC):
         self.objects_dir = objects_dir
         self.log_dir = log_dir
         self.pcap_dir = pcap_dir
+        self.test_pps = kwargs.get('test_pps', 100)
+        self.pkt_num = kwargs.get('pkt_num', None)
 
         for host in self.topo['hosts']:
             self.addHost(host)
@@ -267,7 +269,7 @@ class DuneFatTree(Dune):
             json.dump(topo, f)
         self.topo = topo
 
-def injectPcap(net, pcap_dir=None, pps=100):
+def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
     debug('*** Pcap directory: {}\n'.format(pcap_dir))
     pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
     ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
@@ -278,7 +280,10 @@ def injectPcap(net, pcap_dir=None, pps=100):
     for host, pcap_file in zip(ingress_hosts, pcap_files):
         pcap_file_path = join(pcap_dir, pcap_file)
         assertIsFile(pcap_file_path)
-        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap_file_path}'
+        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
+        if pkt_num:
+            cmd += f' --limit {pkt_num}'
+        cmd += f' {pcap_file_path}'
         info(f'  {host.name}: {cmd}\n')
         procs[host.name] = host.popen(cmd)
         info('\n')
@@ -313,7 +318,7 @@ class DuneCLI(CLI):
             return
 
         info("*** Starting traffic injection\n")
-        injectPcap(self.mn, pcap_dir, pps=pps)
+        injectPcaps(self.mn, pcap_dir, pps=pps)
 
     def do_linear_toniot_test(self, line):
         """Run tcpreplay of a single pcap on a specific host.
@@ -353,13 +358,32 @@ class DuneCLI(CLI):
         host.cmd(cmd)
 
 
-def injectTonPcap(net):
-    pps = 100
-    pcap_dir = 'utils/experiment_pcaps'
+def injectParallelTraffic(net):
+    pcap_dir = getattr(net.topo, 'test_pcap_dir', 'utils/experiment_pcaps')
+    pps = getattr(net.topo, 'test_pps', 100)
+    pkt_num = getattr(net.topo, 'pkt_num', None)
 
-
-    injectPcap(net, pcap_dir, pps=pps)
+    injectPcaps(net, pcap_dir, pps=pps, pkt_num=pkt_num)
     info('*** All replays finished. Waiting for controller to finish.\n')
+
+def injectLinearTraffic(net):
+    pcap = getattr(net.topo, 'test_pcap', '/nas_storage/shared/MetaCom/data/edited_nopayload/ToN_IoT_test.pcap')
+    pps = getattr(net.topo, 'test_pps', 100)
+    pkt_num = getattr(net.topo, 'pkt_num', None)
+    hostName = 'p0_h0_0'
+
+
+    info(f"*** host: {hostName}\n")
+    info(f"*** pcap: {pcap}\n")
+    info(f"*** pps: {pps}\n")
+
+    host = net.get(hostName)
+    cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
+    cmd += f' --limit {pkt_num}' if pkt_num else ''
+    cmd += f' {pcap}'
+    info(f'  {host.name}: {cmd}\n')
+    host.cmd(cmd)
+
 
 
 
@@ -367,7 +391,8 @@ def injectTonPcap(net):
 CLI = DuneCLI
 
 
-tests = { 'tonpcap': injectTonPcap }
+tests = { 'tonfattree': injectParallelTraffic,
+          'tonlinear': injectLinearTraffic}
 
 
 topos = { 'dunejson' : DuneJsonTopo,
