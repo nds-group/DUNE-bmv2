@@ -1,3 +1,111 @@
+# How to run
+To run DUNE in the Mininet environment, you can use the provided `Makefile`. This file contains all the necessary commands to compile the P4 programs, build the parameter strings, and start the Mininet environment. It also includes test targets to run experiments and collect results.
+
+
+## Quick start
+
+- Run the topology:
+  - make run
+- Run the fattree test workflow:
+  - make run-test
+- Run the linear-topology test workflow:
+  - make run-linear-test
+
+No need to run make clean before make run, make run-test, or make run-linear-test. These rebuild as needed and create missing run directories automatically.
+
+## Targets
+
+- run
+  - Builds required artifacts (if out of date) and launches BMv2/Mininet with the fattree topology and your config.
+- run-test
+  - Same as run, then executes the fattree test (tonfattree), processes pcaps, computes scores, and archives results.
+- run-linear-test
+  - Same as run, but forces a linear topology by overriding fattree parameters:
+    - Uses TOPO_ARGS_LINEAR (1 super spine, 1 pod, 1 spine, 1 leaf, 1 host).
+    - Runs the linear test (tonlinear), then processes pcaps, computes scores, and archives results.
+- results
+  - Post-processes pcaps, computes scores (vs. ground truth), and creates an experiment tarball.
+- stop
+  - Cleans Mininet state (mn -c).
+- clean
+  - Removes run artifacts (logs/, pcaps/), but keeps compiled P4 artifacts.
+- clean-all
+  - Also removes compiled artifacts (p4objects/) and result files.
+
+## Configurable variables (override on the make command line)
+
+- TEST_PPS: Packet rate for tests (default 100)
+  - Example: make TEST_PPS=1000 run-test
+- PKT_NUM: Total packets to send (empty by default)
+  - Example: make PKT_NUM=50000 run-test
+- LOG_LEVEL: BMv2/Mininet log level (default INFO)
+  - Example: make LOG_LEVEL=DEBUG run
+- MODELS, MODELS_DIR: Model configuration and directory (defaults in Makefile)
+
+## Artifacts and outputs
+
+- Compiled P4: p4objects/*.json (+ p4info files)
+- Logs: logs/ (mn.log and controller/switch logs)
+  - *WARNING*: logs can grow large, especially with DEBUG log level. Make sure to clean them up periodically.
+- Pcaps:
+  - Fattree runs: pcaps/
+  - Linear runs: linear_pcaps/ (per-test pcaps), plus combined results in pcaps/combined.csv
+- Results:
+  - results_$(TEST_PPS).txt (scores)
+  - experiment_$(TEST_PPS).tar.gz (archive of logs/ and pcaps/ plus results)
+
+## Typical workflows
+
+- Fresh run after a crash or stale Mininet state:
+  - make stop
+  - make run
+- Rerun tests from a clean runtime state (keep compiled artifacts):
+  - make clean
+  - make run-test
+- Run linear-topology tests:
+  - make run-linear-test
+- Force complete rebuild of P4/BMv2 artifacts:
+  - make clean-all
+  - make run
+
+## Troubleshooting
+
+- Interfaces/namespaces already exist or Mininet refuses to start:
+  - make stop
+- Logs/pcaps contain old data:
+  - make clean
+- Unexpected behavior after changing P4 or pipeline configuration:
+  - make clean-all
+  - make run
+### Further debugging
+To debug the execution of the Mininet network, controller and test execution, you can inspect the logs in the `logs/` directory. You can control the log level by modifying the `LOG_LEVEL` variable in the Makefile. The available log levels are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`.
+The controller will log its output to `logs/controller.log`. The controller will start a thread to control each switch in the Mininet network, and each thread will log its output to `logs/c_<switch_id>.log`. Additionally, each switch will log its output to `logs/<switch_id>.log` (Bmv2 output). Finally, the `populate_<switch_id>_tables.log` files will contain the output of the `convert_RF_and_populate_tables.py`, and `populate_forwarding_tables.py` script for each switch. Here you will be able to find out whether the switch is running an inference model or not, and whether the tables were populated correctly.
+
+## Running interactively
+```bash
+make run
+```
+In the Mininet CLI, use the custom commands provided by the DuneCLI:
+
+- toniot_test [pcap_dir] [pps]
+  - Replays one pcap per ingress host in parallel.
+  - Defaults: pcap_dir=utils/experiment_pcaps, pps=100
+  - Example:
+    ```bash
+    toniot_test utils/experiment_pcaps 200
+    ```
+
+- linear_toniot_test <host> <pcap> [pps]
+  - Replays a single pcap on a specific host.
+  - <pcap> can be an absolute path or a file inside utils/experiment_pcaps.
+  - Example (basename resolved under utils/experiment_pcaps):
+    ```bash
+    linear_toniot_test p0_h0_0 TON-IOT_1.pcap 100
+    ```
+Once the pcap is replayed successfully, you can issue `quit` or `CTRL-D` to tear-down the mininet environment.
+You can generate results using the `make results` target as described above.
+
+---
 # Project Structure
 The project is organized as follows:
 ```
@@ -82,78 +190,3 @@ The project is organized as follows:
 - `upload_p4prog_to_switch.py`: Script to upload P4 programs to the switch.
 - `utils/`:
   - `params.ini`: Configuration file for the `prepare_pcap_traces.py` script.
-
-# How to run Mininet
-To run the Mininet environment, you can use the provided `Makefile`. This file contains all the necessary commands to compile the P4 programs, build the parameter strings, and start the Mininet environment.
-To start the Mininet environment, simply run:
-```bash
-make run
-```
-Likewise, to clean up the environment, use:
-```bash
-make clean
-```
-
-## Running a small example
-
-In `Makefile`:
-```
-			 super_spines=1 \
-			 pods=1 \
-			 spines=2 \
-			 leafs=2 \
-			 hosts_per_leaf=1
-```
-```
-MN_TEST :=
-```
-
-Start Mininet:
-```bash
-make run
-```
-
-In the Mininet CLI:
-```bash
-p0_h0_0 tcpreplay -i p0_h0-eth1 --pps 100 -L 1000 ./utils/experiment_pcaps/TON-IOT_1.pcap
-```
-If the interface name is correct, you can find the name by doing:
-```bash
-p0_h0_0 ip -br l
-```
-Once the pcap is replayed successfully, you can issue `quit` or `CTRL-D` to tear-down the mininet environment. To extract results follow the instructions below.
-
-# How to collect results
-To collect results from the Mininet tests, you can use the `process_result_pcaps.sh` script located in the `utils/` directory. This script processes with Tshark the result PCAP files generated by the Mininet tests and extracts the five-tuple and dune header information from the packets received in the egress pod. The aggregated results are stored in a CSV file named `combined.csv` in the `pcap` directory.
-E.g. to process the results, run:
-```bash
-./utils/process_result_pcaps.sh
-Processing ./pcaps/pe_l0-eth5_out.pcap                                                                                                                                                                                                   
-Processing ./pcaps/pe_l0-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l0-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l0-eth8_out.pcap                                                                                           
-Processing ./pcaps/pe_l1-eth5_out.pcap                                                                                           
-Processing ./pcaps/pe_l1-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l1-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l1-eth8_out.pcap                                                                                           
-Processing ./pcaps/pe_l2-eth5_out.pcap                                                                                           
-Processing ./pcaps/pe_l2-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l2-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l2-eth8_out.pcap                                                                                           
-Processing ./pcaps/pe_l3-eth5_out.pcap                                                                                           
-Processing ./pcaps/pe_l3-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l3-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l3-eth8_out.pcap                                                                                           
-Processing ./pcaps/pe_l4-eth5_out.pcap                                                                                           
-Processing ./pcaps/pe_l4-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l4-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l4-eth8_out.pcap                                                                                           
-Processing ./pcaps/pe_l5-eth5_out.pcap                                                                                           
-Processing ./pcaps/pe_l5-eth6_out.pcap                                                                                           
-Processing ./pcaps/pe_l5-eth7_out.pcap                                                                                           
-Processing ./pcaps/pe_l5-eth8_out.pcap                                                                                           
-Wrote ./pcaps/combined.csv                                 
-```
-# How to debug
-To debug the execution of the Mininet network, controller and test execution, you can inspect the logs in the `logs/` directory. You can control the log level by modifying the `LOG_LEVEL` variable in the Makefile. The available log levels are `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`.
-The controller will log its output to `logs/controller.log`. The controller will start a thread to control each switch in the Mininet network, and each thread will log its output to `logs/c_<switch_id>.log`. Additionally, each switch will log its output to `logs/<switch_id>.log` (Bmv2 output). Finally, the `populate_<switch_id>_tables.log` files will contain the output of the `convert_RF_and_populate_tables.py`, and `populate_forwarding_tables.py` script for each switch. Here you will be able to find out whether the switch is running an inference model or not, and whether the tables were populated correctly.

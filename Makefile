@@ -68,7 +68,6 @@ TOPO_ARGS_LINEAR := models=$(MODELS) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
 			 pcap_dir=$(PCAP_DIR) \
-			 test_pcap_dir=./linear_pcaps \
 			 test_pps=$(TEST_PPS) \
 			 pkt_num=$(PKT_NUM) \
 			 super_spines=1 \
