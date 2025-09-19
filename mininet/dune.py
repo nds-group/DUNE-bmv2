@@ -10,6 +10,7 @@ import json
 import networkx as nx
 import pulp
 import itertools
+import re
 from collections import defaultdict
 
 from pprint import pprint
@@ -119,7 +120,7 @@ class Dune(Topo, ABC):
         for path_id, path in self.topo['paths'].items():
             debug(f'  {path_id}: {path}\n')
 
-    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
+    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, pcap_regex='.*', **kwargs):
         assertIsFile(models)
         assertIsDir(models_dir)
         assertIsDir(objects_dir)
@@ -134,8 +135,12 @@ class Dune(Topo, ABC):
         self.objects_dir = objects_dir
         self.log_dir = log_dir
         self.pcap_dir = pcap_dir
+        self.pcap_regex = pcap_regex
         self.test_pps = kwargs.get('test_pps', 100)
         self.pkt_num = kwargs.get('pkt_num', None)
+
+        regex_pattern = re.compile(pcap_regex)
+
 
         for host in self.topo['hosts']:
             self.addHost(host)
@@ -145,12 +150,14 @@ class Dune(Topo, ABC):
         for sw in self.topo['switches']:
             info(f'Added switch {sw} with model {self.model_assignment[sw]}\n')
         for sw in self.topo['switches']:
+            enable_pcap = True if regex_pattern.match(sw) else False
             self.addSwitch(
                     sw,
                     model_config=self.model_assignment[sw],
                     model_dir=self.models_dir,
                     objects_dir=self.objects_dir,
                     log_dir=self.log_dir,
+                    enable_pcap=enable_pcap,
                     pcap_dir=self.pcap_dir,
                     ingress_port_to_mpls=None,
                     mpls_to_egress_port=None,
@@ -292,7 +299,7 @@ def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
         still_running = [name for name, p in procs.items() if p.poll() is None]
         if not still_running:
             break
-        info(f'  still running: {still_running}\n')
+        info(f'  still running: {still_running}\r')
         sleep(0.5)
 
 

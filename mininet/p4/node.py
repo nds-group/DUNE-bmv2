@@ -66,7 +66,7 @@ class P4SimpleSwitchGRPC(Switch):
 
     def __init__(
             self, name, model_config,
-            model_dir, objects_dir, log_dir, pcap_dir,
+            model_dir, objects_dir, log_dir, enable_pcap, pcap_dir,
             ingress_port_to_mpls, mpls_to_egress_port,
             log_level,
             **kwargs
@@ -80,10 +80,12 @@ class P4SimpleSwitchGRPC(Switch):
 
         self.controller_is_connected = False
 
+        self.topo_class = kwargs.get('topo_class', None)
         self.model_config = model_config
         self.model_dir = model_dir
         self.objects_dir = objects_dir
         self.log_dir = log_dir
+        self.enable_pcap = enable_pcap
         self.pcap_dir = pcap_dir
         self.ingress_port_to_mpls = ingress_port_to_mpls
         self.mpls_to_egress_port = mpls_to_egress_port
@@ -134,7 +136,9 @@ class P4SimpleSwitchGRPC(Switch):
         for port, intf in self.intfs.items():
             if not intf.IP():
                 self.start_cmd += ['-i', str(port) + '@' + intf.name]
-        self.start_cmd += ['--pcap', 'pcaps']
+        # FIXME: other topologies not including fat tree may want pcaps for each switch
+        if self.enable_pcap:
+            self.start_cmd += ['--pcap', 'pcaps']
         self.start_cmd += ['--nanolog', f'ipc:///tmp/bm-{self.device_id}-log.ipc']
         self.start_cmd += ['--device-id', str(self.device_id)]
         self.start_cmd += [self.sw_json]

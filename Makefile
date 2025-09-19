@@ -46,6 +46,7 @@ CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
 FATTREE_TOPOLOGY := configs/topos/fattreetopo.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
+PCAP_REGEX ?= ^pe_l[0-9]+$
 SUPER_SPINES ?= 4
 SPINES ?= 4
 LEAFS ?= 6
@@ -59,6 +60,7 @@ TOPO_ARGS := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
+			 pcap_regex=$(PCAP_REGEX) \
 			 pcap_dir=$(PCAP_DIR) \
 			 test_pps=$(TEST_PPS) \
 			 pkt_num=$(PKT_NUM) \
