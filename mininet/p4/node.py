@@ -136,13 +136,15 @@ class P4SimpleSwitchGRPC(Switch):
         for port, intf in self.intfs.items():
             if not intf.IP():
                 self.start_cmd += ['-i', str(port) + '@' + intf.name]
-        # FIXME: other topologies not including fat tree may want pcaps for each switch
         if self.enable_pcap:
             self.start_cmd += ['--pcap', 'pcaps']
         self.start_cmd += ['--nanolog', f'ipc:///tmp/bm-{self.device_id}-log.ipc']
         self.start_cmd += ['--device-id', str(self.device_id)]
         self.start_cmd += [self.sw_json]
-        self.start_cmd += ['--log-console']
+        if self.log_level == 'DEBUG':
+            self.start_cmd += ['--log-console']
+        else:
+            self.start_cmd += ['--log-level off']
         self.start_cmd += ['--thrift-port', str(self.thrift_port)]
         self.start_cmd += ['--']
         self.start_cmd += ['--grpc-server-addr', f'127.0.0.1:{self.grpc_port}']
