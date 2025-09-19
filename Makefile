@@ -46,9 +46,14 @@ CUSTOM_TOPOLOGY := configs/topos/topo_ton.json
 FATTREE_TOPOLOGY := configs/topos/fattreetopo.json
 MODELS := configs/models/ton.json
 MODELS_DIR := ./models
+SUPER_SPINES ?= 4
+SPINES ?= 4
+LEAFS ?= 6
+PODS ?= 4
+HOSTS_PER_LEAF ?= 2
 TEST_PPS ?= 100
 PKT_NUM ?=
-RESULTS_FILE := results_$(TEST_PPS).txt
+RESULTS_FILE = results_p$(PODS)_ss$(SUPER_SPINES)_s$(SPINES)_l$(LEAFS)_h$(HOSTS_PER_LEAF)_$(TEST_PPS)pps.txt
 
 TOPO_ARGS := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
@@ -57,11 +62,11 @@ TOPO_ARGS := models=$(MODELS) \
 			 pcap_dir=$(PCAP_DIR) \
 			 test_pps=$(TEST_PPS) \
 			 pkt_num=$(PKT_NUM) \
-			 super_spines=2 \
-			 pods=4 \
-			 spines=4 \
-			 leafs=6 \
-			 hosts_per_leaf=2
+			 super_spines=$(SUPER_SPINES) \
+			 pods=$(PODS) \
+			 spines=$(SPINES) \
+			 leafs=$(LEAFS) \
+			 hosts_per_leaf=$(HOSTS_PER_LEAF)
 
 TOPO_ARGS_LINEAR := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
@@ -97,7 +102,17 @@ MN_ARGS := $(MN_CUSTOM) \
 
 PROCESS_PCAPS := ./utils/process_result_pcaps.sh
 COMPUTE_SCORES := python3 ./utils/calculate_score.py --results $(COMBINED_PCAPS_FILE) --ground-truth $(GROUND_TRUTH_FILE)
-ARCHIVE_EXPERIMENT := tar -cvzf experiment_$(TEST_PPS).tar.gz \
+
+# Compute the next available tarball
+BASENAME := experiment
+NEXT_ARCHIVE_FILE := $(shell \
+    i=1; \
+    while [ -e "$(CURDIR)/$(BASENAME)_$$i.tar.gz" ]; do \
+        i=$$((i+1)); \
+    done; \
+    echo "$(CURDIR)/$(BASENAME)_$$i.tar.gz" \
+)
+ARCHIVE_EXPERIMENT := tar -cvzf $(NEXT_ARCHIVE_FILE) \
 		                $(PCAP_DIR) \
 				$(LOG_DIR) \
 				Makefile \
