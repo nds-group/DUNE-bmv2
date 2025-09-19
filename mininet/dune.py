@@ -279,29 +279,52 @@ class DuneFatTree(Dune):
 def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
     debug('*** Pcap directory: {}\n'.format(pcap_dir))
     pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
-    ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
-    pcap_files = pcap_files[:len(ingress_hosts)]
-    procs = {}
+    pcap_files.sort()
 
-    info('*** Starting tcpreplay on ingress hosts\n')
-    for host, pcap_file in zip(ingress_hosts, pcap_files):
+    ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
+    procs = {host.name: {'host': host, 'proc': None, 'pcap': None} for host in ingress_hosts}
+
+    def start_on_host(host, pcap_file):
         pcap_file_path = join(pcap_dir, pcap_file)
         assertIsFile(pcap_file_path)
         cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
         if pkt_num:
             cmd += f' --limit {pkt_num}'
         cmd += f' {pcap_file_path}'
-        info(f'  {host.name}: {cmd}\n')
-        procs[host.name] = host.popen(cmd)
-        info('\n')
+        return host.popen(cmd)
+
+    # Seed initial runs up to the number of hosts
+    to_assign = pcap_files[:]
+    for host in ingress_hosts:
+        if not to_assign:
+            break
+        file = to_assign.pop(0)
+        procs[host.name]['pcap'] = file
+        procs[host.name]['proc'] = start_on_host(host, file)
 
     while True:
-        still_running = [name for name, p in procs.items() if p.poll() is None]
-        if not still_running:
-            break
-        info(f'  still running: {still_running}\r')
-        sleep(0.5)
+        # Assign new work to any host that finished
+        for name, s in procs.items():
+            p = s['proc']
+            if p is not None and p.poll() is not None:
+                # Finished current pcap
+                s['proc'] = None
+                s['pcap'] = None
+            if s['proc'] is None and to_assign:
+                next_file = to_assign.pop(0)
+                s['pcap'] = next_file
+                s['proc'] = start_on_host(s['host'], next_file)
 
+        # Build single-line status with running and pending names
+        running = [f"{s['host'].name}:{s['pcap']}" for s in procs.values() if s['proc'] is not None]
+        pending = to_assign  # remaining filenames
+        info(f"  running: [{', '.join(running)}]\n  pending: [{', '.join(pending)}]\r\r")
+
+        # Exit when no processes are running and nothing is pending
+        if not pending and all(s['proc'] is None for s in procs.values()):
+            break
+
+        sleep(0.5)
 
 class DuneCLI(CLI):
     def do_toniot_test(self, line):
