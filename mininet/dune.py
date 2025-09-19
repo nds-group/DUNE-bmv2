@@ -318,7 +318,7 @@ def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
         # Build single-line status with running and pending names
         running = [f"{s['host'].name}:{s['pcap']}" for s in procs.values() if s['proc'] is not None]
         pending = to_assign  # remaining filenames
-        info(f"  running: [{', '.join(running)}]\n  pending: [{', '.join(pending)}]\r\r")
+        info(f"  running: {len(running)}, pending: {len(pending)}\r")
 
         # Exit when no processes are running and nothing is pending
         if not pending and all(s['proc'] is None for s in procs.values()):
