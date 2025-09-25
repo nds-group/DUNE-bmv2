@@ -8,7 +8,7 @@ declare -A counts
 while IFS=$'\t' read -r file pkts; do
     fname=$(basename "$file")
     counts["$fname"]=$pkts
-done < <(capinfos -T -c "$PCAP_DIR"/*.pcap | awk -F'\t' 'NR>1 {print $1"\t"$2}')
+done < <(capinfos -T -c -r "$PCAP_DIR"/*.pcap )
 
 echo "Comparing pcap pairs in $PCAP_DIR"
 echo "--------------------------------"
