@@ -3,12 +3,23 @@ p4objects
 logs
 pcaps
 
-.env
+*.pcap
+*.pdf
 
-utils/experiment_pcaps
+.env
+.nvmrc
+
+utils/experiment_pcaps*
 utils/merged_pcaps
 
 16-10-05.pcap
 ToN_IoT_test.pcap
 utils/experiment_pcaps
 utils/merged_pcaps
+tmp
+paths.csv
+*.tar.gz
+results_*.txt
+
+.ipynb_checkpoints
+experiments.db
