@@ -278,15 +278,15 @@ def upload_model(model, feature_offset, code_table_offset, index):
             get_feature_table(get_splits(clf, feature_names), feature_names[fea]),
             len(clf.estimators_),
         )
+        table = p4.context.get_table(f"InferenceModel.TableFeature{fea + feature_offset}")
+        assert len(table.match_fields) == 1, f'{table.preamble.name} has {len(table.atch_fields)} match fields instead of 1'
         for i, ran in enumerate(Ranges):
             entry = p4.TableEntry(f"InferenceModel.TableFeature{fea + feature_offset}")(
                 action=f"InferenceModel.SetCode{fea + feature_offset}"
             )
             start = ran.split(",")[0]
             end = (
-                # Trickery to get the upper power of two for
-                # for the last range
-                2 ** (int(ran.split(",")[1]).bit_length()) - 1
+                2 ** table.match_fields[0].bitwidth - 1
                 if ran == Ranges[len(Ranges) - 1]
                 else ran.split(",")[1]
             )
@@ -334,9 +334,9 @@ def upload_model(model, feature_offset, code_table_offset, index):
 
     try:
         logging.info('Attempting to populate a voting table')
-        for i in range(1, 3):
-            for j in range(1, 3):
-                for k in range(1, 3):
+        for i in range(1, 4):
+            for j in range(1, 4):
+                for k in range(1, 4):
                     if (i != j) & (j != k) & (i != k):
                         pass
                     else:

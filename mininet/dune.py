@@ -10,6 +10,7 @@ import json
 import networkx as nx
 import pulp
 import itertools
+import re
 from collections import defaultdict
 
 from pprint import pprint
@@ -110,8 +111,8 @@ class Dune(Topo, ABC):
         pass
 
     def debugTopo(self):
-        debug(f'*** Hosts: {self.topo['hosts']}\n')
-        debug(f'*** Switches: {self.topo['switches']}\n')
+        debug(f"*** Hosts: {self.topo['hosts']}\n")
+        debug(f"*** Switches: {self.topo['switches']}\n")
         debug(f'*** Links: ***\n')
         for link in self.topo['links']:
             debug(f'  {link[0]} <-> {link[1]}\n')
@@ -119,8 +120,7 @@ class Dune(Topo, ABC):
         for path_id, path in self.topo['paths'].items():
             debug(f'  {path_id}: {path}\n')
 
-
-    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, **kwargs):
+    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, pcap_regex='.*', **kwargs):
         assertIsFile(models)
         assertIsDir(models_dir)
         assertIsDir(objects_dir)
@@ -135,6 +135,12 @@ class Dune(Topo, ABC):
         self.objects_dir = objects_dir
         self.log_dir = log_dir
         self.pcap_dir = pcap_dir
+        self.pcap_regex = pcap_regex
+        self.test_pps = kwargs.get('test_pps', 100)
+        self.pkt_num = kwargs.get('pkt_num', None)
+
+        regex_pattern = re.compile(pcap_regex)
+
 
         for host in self.topo['hosts']:
             self.addHost(host)
@@ -144,12 +150,14 @@ class Dune(Topo, ABC):
         for sw in self.topo['switches']:
             info(f'Added switch {sw} with model {self.model_assignment[sw]}\n')
         for sw in self.topo['switches']:
+            enable_pcap = True if regex_pattern.match(sw) else False
             self.addSwitch(
                     sw,
                     model_config=self.model_assignment[sw],
                     model_dir=self.models_dir,
                     objects_dir=self.objects_dir,
                     log_dir=self.log_dir,
+                    enable_pcap=enable_pcap,
                     pcap_dir=self.pcap_dir,
                     ingress_port_to_mpls=None,
                     mpls_to_egress_port=None,
@@ -268,51 +276,153 @@ class DuneFatTree(Dune):
             json.dump(topo, f)
         self.topo = topo
 
-def injectTonPcap(net):
-    pps = 100
-    pcap_dir = 'utils/experiment_pcaps'
+def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
+    debug('*** Pcap directory: {}\n'.format(pcap_dir))
     pcap_files = [f for f in listdir(pcap_dir) if isfile(join(pcap_dir, f))]
-    ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
-    pcap_files = pcap_files[:len(ingress_hosts)]
-    procs = {}
+    pcap_files.sort()
 
-    info('*** Starting tcpreplay on ingress hosts\n')
-    for host, pcap_file in zip(ingress_hosts, pcap_files):
+    ingress_hosts = [host for host in net.hosts if not host.name.startswith('pe')]
+    procs = {host.name: {'host': host, 'proc': None, 'pcap': None} for host in ingress_hosts}
+
+    def start_on_host(host, pcap_file):
         pcap_file_path = join(pcap_dir, pcap_file)
         assertIsFile(pcap_file_path)
-        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap_file_path}'
-        info(f'  {host.name}: {cmd}\n')
-        procs[host.name] = host.popen(cmd)
-        info('\n')
+        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
+        if pkt_num:
+            cmd += f' --limit {pkt_num}'
+        cmd += f' {pcap_file_path}'
+        return host.popen(cmd)
+
+    # Seed initial runs up to the number of hosts
+    to_assign = pcap_files[:]
+    for host in ingress_hosts:
+        if not to_assign:
+            break
+        file = to_assign.pop(0)
+        procs[host.name]['pcap'] = file
+        procs[host.name]['proc'] = start_on_host(host, file)
 
     while True:
-        still_running = [name for name, p in procs.items() if p.poll() is None]
-        if not still_running:
+        # Assign new work to any host that finished
+        for name, s in procs.items():
+            p = s['proc']
+            if p is not None and p.poll() is not None:
+                # Finished current pcap
+                s['proc'] = None
+                s['pcap'] = None
+            if s['proc'] is None and to_assign:
+                next_file = to_assign.pop(0)
+                s['pcap'] = next_file
+                s['proc'] = start_on_host(s['host'], next_file)
+
+        # Build single-line status with running and pending names
+        running = [f"{s['host'].name}:{s['pcap']}" for s in procs.values() if s['proc'] is not None]
+        pending = to_assign  # remaining filenames
+        info(f"  running: {len(running)}, pending: {len(pending)}\r")
+
+        # Exit when no processes are running and nothing is pending
+        if not pending and all(s['proc'] is None for s in procs.values()):
             break
-        info(f'  still running: {still_running}\n')
+
         sleep(0.5)
 
-    info('*** All replays finished. Waiting for controller to finish.\n')
-    # Check if controller is running
-    import subprocess
-    while True:
-        controller_running = subprocess.call(
-            ['pgrep', '-f', 'controller.py'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        ) == 0
-        if not controller_running:
-            info('Controller finished running\n')
-            break
+class DuneCLI(CLI):
+    def do_toniot_test(self, line):
+        """Run tcpreplay on all ingress hosts with one pcap per host.
+           Usage: toniot_test [pcap_dir (default: utils/experiment_pcaps)] [pps (default: 100)]
+        """
+        args = line.split()
+        if len(args) == 0:
+            pcap_dir = 'utils/experiment_pcaps'
         else:
-            sleep(1)
-    CLI(net)
+            pcap_dir = args[0]
+
+        if not isdir(pcap_dir):
+            info(f"Error: pcap directory '{pcap_dir}' not found\n")
+            return
+
+        try:
+            pps = int(args[1]) if len(args) > 1 else 100
+        except ValueError:
+            info("Error: pps must be an integer\n")
+            return
+
+        info("*** Starting traffic injection\n")
+        injectPcaps(self.mn, pcap_dir, pps=pps)
+
+    def do_linear_toniot_test(self, line):
+        """Run tcpreplay of a single pcap on a specific host.
+           Usage: linear_toniot_test <host> <pcap> [pps]
+        """
+        args = line.split()
+        if len(args) < 2:
+            info("Usage: linear_toniot_test <host> <pcap> [pps]\n")
+            return
+
+        hostName, pcap = args[0], args[1]
+        try:
+            pps = int(args[2]) if len(args) > 2 else 100
+        except ValueError:
+            info("Error: pps must be an integer\n")
+            return
+
+        if hostName not in [h.name for h in self.mn.hosts]:
+            info(f"Error: host '{hostName}' not found\n")
+            return
+
+        if not isfile(pcap):
+            alt = join('utils/experiment_pcaps', pcap)
+            if isfile(alt):
+                pcap = alt
+            else:
+                info(f"Error: pcap file '{pcap}' not found\n")
+                return
+
+        info(f"*** host: {hostName}\n")
+        info(f"*** pcap: {pcap}\n")
+        info(f"*** pps: {pps}\n")
+
+        host = self.mn.get(hostName)
+        cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap}'
+        info(f'  {host.name}: {cmd}\n')
+        host.cmd(cmd)
+
+
+def injectParallelTraffic(net):
+    pcap_dir = getattr(net.topo, 'test_pcap_dir', 'utils/experiment_pcaps')
+    pps = getattr(net.topo, 'test_pps', 100)
+    pkt_num = getattr(net.topo, 'pkt_num', None)
+
+    injectPcaps(net, pcap_dir, pps=pps, pkt_num=pkt_num)
+    info('*** All replays finished. Waiting for controller to finish.\n')
+
+def injectLinearTraffic(net):
+    pcap = getattr(net.topo, 'test_pcap', '/nas_storage/shared/MetaCom/data/edited_nopayload/ToN_IoT_test.pcap')
+    pps = getattr(net.topo, 'test_pps', 100)
+    pkt_num = getattr(net.topo, 'pkt_num', None)
+    hostName = 'p0_h0_0'
+
+
+    info(f"*** host: {hostName}\n")
+    info(f"*** pcap: {pcap}\n")
+    info(f"*** pps: {pps}\n")
+
+    host = net.get(hostName)
+    cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
+    cmd += f' --limit {pkt_num}' if pkt_num else ''
+    cmd += f' {pcap}'
+    info(f'  {host.name}: {cmd}\n')
+    host.cmd(cmd)
 
 
 
 
+# Override the default CLI class globally
+CLI = DuneCLI
 
-tests = { 'tonpcap': injectTonPcap }
+
+tests = { 'tonfattree': injectParallelTraffic,
+          'tonlinear': injectLinearTraffic}
 
 
 topos = { 'dunejson' : DuneJsonTopo,

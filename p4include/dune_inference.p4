@@ -248,8 +248,8 @@ control Inference(
         hdr.dune.class_type = class_type;
         hdr.dune.class = class;
         // For statistics do not overide a collision that happened upstream;
-        if (hdr.dune.collision != 0 && collision) {
-                hdr.dune.collision = 1;
+        if (collision) {
+            hdr.dune.collision = 1;
         }
     }
 }
