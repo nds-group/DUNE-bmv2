@@ -120,6 +120,10 @@ ARCHIVE_EXPERIMENT := tar -cvzf $(NEXT_ARCHIVE_FILE) \
 				Makefile \
 				$(RESULTS_FILE)
 
+DB_SAVE :=  python utils/insert_to_db.py \
+	    --file $(RESULTS_FILE) \
+	    --archive $(NEXT_ARCHIVE_FILE)
+
 
 .PHONY: all
 all: build
@@ -134,6 +138,7 @@ results:
 	   $(PROCESS_PCAPS)
 	   $(COMPUTE_SCORES) 2>&1 > $(RESULTS_FILE)
 	   $(ARCHIVE_EXPERIMENT)
+	   $(DB_SAVE)
 
 .PHONY: run-test
 run-test: override MN_ARGS += --test=tonfattree
