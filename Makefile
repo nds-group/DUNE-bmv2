@@ -32,7 +32,7 @@ P4_FLAGS_DEPS = -MD -MP -MT $(OBJECTS_DIR)/$*.json -MF $(OBJECTS_DIR)/$*.d
 
 MN := sudo PATH="$(PATH)" `which mn`
 
-MN_DIR := ./mininet
+MN_DIR := ./dune
 
 
 join_with_comma = $(shell echo $1 | sed 's/ \+/,/g')
