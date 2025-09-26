@@ -27,179 +27,71 @@ def loadJsonFile(path):
     with open(path, 'r') as file:
         return json.load(file)
 
+def assignModels(topo, models, paths, pulp_msg=0):
+    # remove hosts from the paths
+    paths = list(topo['paths'].values())
+    paths = [list(filter(lambda node: node in topo['switches'], path)) for path in paths]
 
-class Dune(Topo, ABC):
-    def assignModels(self):
-        G = nx.Graph()
-        G.add_nodes_from(self.topo['switches'])
-        G.add_nodes_from(self.topo['hosts'])
-        G.add_edges_from(self.topo['links'])
+    G = nx.Graph()
+    G.add_nodes_from(topo['switches'])
+    G.add_nodes_from(topo['hosts'])
+    G.add_edges_from(topo['links'])
 
-        # Minimisation problem
-        ilp = pulp.LpProblem('AssignModels', pulp.LpMinimize)
+    # Minimisation problem
+    ilp = pulp.LpProblem('AssignModels', pulp.LpMinimize)
 
-        # Deployment variables
-        X = {}
-        for sw in self.topo['switches']:
-            X[sw] = {}
-            for m in self.models:
-                X[sw][m] = pulp.LpVariable(f'x_{sw}_{m}', cat='Binary')
+    # Deployment variables
+    X = {}
+    for sw in topo['switches']:
+        X[sw] = {}
+        for m in models:
+            X[sw][m] = pulp.LpVariable(f'x_{sw}_{m}', cat='Binary')
 
-        # Adding the objective function
-        ilp += pulp.lpSum(X)
+    # Adding the objective function
+    ilp += pulp.lpSum(X)
 
-        if self.__class__.__name__ == 'DuneFatTree':
-            paths = list(self.topo['paths'].values())
-            paths = [list(filter(lambda node: node in self.topo['switches'], path)) for path in paths]
-        else:
-            # Creating paths
-            pairs = itertools.combinations(self.topo['hosts'], 2)
-            paths = []
-            for h1, h2 in pairs:
-                for path in nx.all_simple_paths(G, h1, h2):
-                    sw_in_path = list(filter(lambda node: node in self.topo['switches'], path))
-                    paths.append(sw_in_path)
+    # Integrity constraints :
+    # For each path, one of each model must appear in a switch in the path
+    for path in paths:
+        for m in models:
+            expr = pulp.LpAffineExpression()
+            for sw in path:
+                expr.addInPlace(X[sw][m], 1)
+            ilp += expr >= 1
 
+    # Dependency constraints :
+    # For each path, if a model is deployed in a switch and has a dependency
+    # then the dependency must apprear earlier in the path
+    for path in paths:
+        for m in models:
+            prev = models[m]['previous']
+            if prev is not None:
+                accumulator = [path[:i + 1] for i in range(len(path))]
+                for sws in accumulator:
+                    current_model_switch = sws.pop()
+                    expr = pulp.LpAffineExpression()
+                    for sw in sws:
+                        expr.addInPlace(X[sw][prev], 1)
+                    ilp += expr >= X[current_model_switch][m]
 
-        # Integrity constraints :
-        # For each path, one of each model must appear in a switch in the path
-        for path in paths:
-            for m in self.models:
-                expr = pulp.LpAffineExpression()
-                for sw in path:
-                    expr.addInPlace(X[sw][m], 1)
-                ilp += expr >= 1
+    ilp.solve(pulp.PULP_CBC_CMD(msg=pulp_msg))
+    assert ilp.status == pulp.constants.LpStatusOptimal, 'ILP could not find a solution'
 
-        # Dependency constraints :
-        # For each path, if a model is deployed in a switch and has a dependency
-        # then the dependency must apprear earlier in the path
-        for path in paths:
-            for m in self.models:
-                prev = self.models[m]['previous']
-                if prev is not None:
-                    accumulator = [path[:i + 1] for i in range(len(path))]
-                    for sws in accumulator:
-                        current_model_switch = sws.pop()
-                        expr = pulp.LpAffineExpression()
-                        for sw in sws:
-                            expr.addInPlace(X[sw][prev], 1)
-                        ilp += expr >= X[current_model_switch][m]
+    #TODO log the results
+    model_assignment = {}
+    for sw in topo['switches']:
+        model_assignment[sw] = None
+        for m in models:
+            if X[sw][m].varValue == 1:
+                assert model_assignment[sw] is None, 'A switch received more than one model'
+                model_assignment[sw] = models[m]
+        if model_assignment[sw] is None:
+            model_assignment[sw] = { 'p4': 'no_inference' }
 
-        if lg.level == 10:  # Debug level
-            msg = 1
-        else:
-            msg = 0
-        ilp.solve(pulp.PULP_CBC_CMD(msg=msg))
-        assert ilp.status == pulp.constants.LpStatusOptimal, 'ILP could not find a solution'
-        self.model_assignment = {}
-        #TODO log the results
-        for sw in self.topo['switches']:
-            self.model_assignment[sw] = None
-            for m in self.models:
-                if X[sw][m].varValue == 1:
-                    assert self.model_assignment[sw] is None, 'A switch received more than one model'
-                    self.model_assignment[sw] = self.models[m]
-            if self.model_assignment[sw] is None:
-                self.model_assignment[sw] = { 'p4': 'no_inference' }
-
-    @abstractmethod
-    def set_topo(self, **kwargs):
-        """
-        Set the topology for the Dune instance.
-        This method should be implemented by subclasses to define how the topology is set.
-        """
-        pass
-
-    def debugTopo(self):
-        debug(f"*** Hosts: {self.topo['hosts']}\n")
-        debug(f"*** Switches: {self.topo['switches']}\n")
-        debug(f'*** Links: ***\n')
-        for link in self.topo['links']:
-            debug(f'  {link[0]} <-> {link[1]}\n')
-        debug(f'*** Paths: ***\n')
-        for path_id, path in self.topo['paths'].items():
-            debug(f'  {path_id}: {path}\n')
-
-    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, pcap_regex='.*', **kwargs):
-        assertIsFile(models)
-        assertIsDir(models_dir)
-        assertIsDir(objects_dir)
-        assertIsDir(log_dir)
-        assertIsDir(pcap_dir)
-
-        self.set_topo(**kwargs)
-        self.debugTopo()
-        assert self.topo
-        self.models = loadJsonFile(models)
-        self.models_dir = models_dir
-        self.objects_dir = objects_dir
-        self.log_dir = log_dir
-        self.pcap_dir = pcap_dir
-        self.pcap_regex = pcap_regex
-        self.test_pps = kwargs.get('test_pps', 100)
-        self.pkt_num = kwargs.get('pkt_num', None)
-
-        regex_pattern = re.compile(pcap_regex)
+    return model_assignment
 
 
-        for host in self.topo['hosts']:
-            self.addHost(host)
-
-        self.assignModels()
-        info('*** Model assignment:\n')
-        for sw in self.topo['switches']:
-            info(f'Added switch {sw} with model {self.model_assignment[sw]}\n')
-        for sw in self.topo['switches']:
-            enable_pcap = True if regex_pattern.match(sw) else False
-            self.addSwitch(
-                    sw,
-                    model_config=self.model_assignment[sw],
-                    model_dir=self.models_dir,
-                    objects_dir=self.objects_dir,
-                    log_dir=self.log_dir,
-                    enable_pcap=enable_pcap,
-                    pcap_dir=self.pcap_dir,
-                    ingress_port_to_mpls=None,
-                    mpls_to_egress_port=None,
-                )
-
-        for nodes in self.topo['links']:
-            self.addLink(nodes[0], nodes[1])
-
-        for path in self.topo['paths']:
-            self.processPathForwardingInfo(path)
-
-    def processPathForwardingInfo(self, path):
-        for node1, node2 in itertools.pairwise(self.topo['paths'][path]):
-            port1, port2 = self.port(node1, node2)
-            if not self.isSwitch(node1) and self.isSwitch(node2):
-                # Ingress switch
-                self.updateSwitchForwardingInfo(
-                        node2, 'ingress_port_to_mpls', port2, path
-                        )
-            if self.isSwitch(node1):
-                # Every other ones
-                self.updateSwitchForwardingInfo(
-                        node1, 'mpls_to_egress_port', path, port1
-                        )
-
-    def updateSwitchForwardingInfo(self, node, info_key, key, value):
-        nodeInfo = self.nodeInfo(node)
-        if nodeInfo[info_key] is None:
-            nodeInfo[info_key] = {}
-        nodeInfo[info_key][key] = value
-        self.setNodeInfo(node, nodeInfo)
-
-
-class DuneJsonTopo(Dune):
-    def set_topo(self, **kwargs):
-        topo = kwargs.get('topo')
-        assertIsFile(topo)
-        self.topo = loadJsonFile(topo)
-
-
-class DuneFatTree(Dune):
-    def set_topo(self, super_spines=1,  pods=3, spines=2, leafs=3, hosts_per_leaf=1, **kwargs):
+def build_fattree_topo(super_spines,  pods, spines, leafs, hosts_per_leaf):
         topo = {
             'switches': [],
             'hosts': [],
@@ -271,6 +163,131 @@ class DuneFatTree(Dune):
 
                     topo['paths'][path_id] = path
                     path_id += 1
+        return topo
+
+class Dune(Topo, ABC):
+    @abstractmethod
+    def set_topo(self, **kwargs):
+        """
+        Set the topology for the Dune instance.
+        This method should be implemented by subclasses to define how the topology is set.
+        """
+        pass
+
+    def debugTopo(self):
+        debug(f"*** Hosts: {self.topo['hosts']}\n")
+        debug(f"*** Switches: {self.topo['switches']}\n")
+        debug(f'*** Links: ***\n')
+        for link in self.topo['links']:
+            debug(f'  {link[0]} <-> {link[1]}\n')
+        debug(f'*** Paths: ***\n')
+        for path_id, path in self.topo['paths'].items():
+            debug(f'  {path_id}: {path}\n')
+
+    def build(self, models, models_dir, objects_dir, log_dir, pcap_dir, pcap_regex='.*', **kwargs):
+        assertIsFile(models)
+        assertIsDir(models_dir)
+        assertIsDir(objects_dir)
+        assertIsDir(log_dir)
+        assertIsDir(pcap_dir)
+
+        self.set_topo(**kwargs)
+        self.debugTopo()
+        assert self.topo
+        self.models = loadJsonFile(models)
+        self.models_dir = models_dir
+        self.objects_dir = objects_dir
+        self.log_dir = log_dir
+        self.pcap_dir = pcap_dir
+        self.pcap_regex = pcap_regex
+        self.test_pps = kwargs.get('test_pps', 100)
+        self.pkt_num = kwargs.get('pkt_num', None)
+
+        regex_pattern = re.compile(pcap_regex)
+
+
+        for host in self.topo['hosts']:
+            self.addHost(host)
+
+        if self.__class__.__name__ == 'DuneJsonTopo':
+            # Creating paths
+            pairs = itertools.combinations(self.topo['hosts'], 2)
+            paths = {}
+            for idx, (h1, h2) in enumerate(pairs):
+                for path in nx.all_simple_paths(G, h1, h2):
+                    sw_in_path = list(filter(lambda node: node in self.topo['switches'], path))
+                    paths[idx]=sw_in_path
+
+            self.paths=paths
+        else:
+            self.paths = self.topo['paths']
+
+        # Mininet's debug level is 10
+        msg = 1 if lg.level == 10 else 0
+
+        self.model_assignment = assignModels(self.topo, self.models, self.paths, msg)
+        info('*** Model assignment:\n')
+        for sw in self.topo['switches']:
+            info(f'Added switch {sw} with model {self.model_assignment[sw]}\n')
+
+        for sw in self.topo['switches']:
+            enable_pcap = True if regex_pattern.match(sw) else False
+            self.addSwitch(
+                    sw,
+                    model_config=self.model_assignment[sw],
+                    model_dir=self.models_dir,
+                    objects_dir=self.objects_dir,
+                    log_dir=self.log_dir,
+                    enable_pcap=enable_pcap,
+                    pcap_dir=self.pcap_dir,
+                    ingress_port_to_mpls=None,
+                    mpls_to_egress_port=None,
+                )
+
+        for nodes in self.topo['links']:
+            self.addLink(nodes[0], nodes[1])
+
+        for path in self.topo['paths']:
+            self.processPathForwardingInfo(path)
+
+    def processPathForwardingInfo(self, path):
+        for node1, node2 in itertools.pairwise(self.topo['paths'][path]):
+            port1, port2 = self.port(node1, node2)
+            if not self.isSwitch(node1) and self.isSwitch(node2):
+                # Ingress switch
+                self.updateSwitchForwardingInfo(
+                        node2, 'ingress_port_to_mpls', port2, path
+                        )
+            if self.isSwitch(node1):
+                # Every other ones
+                self.updateSwitchForwardingInfo(
+                        node1, 'mpls_to_egress_port', path, port1
+                        )
+
+    def updateSwitchForwardingInfo(self, node, info_key, key, value):
+        nodeInfo = self.nodeInfo(node)
+        if nodeInfo[info_key] is None:
+            nodeInfo[info_key] = {}
+        nodeInfo[info_key][key] = value
+        self.setNodeInfo(node, nodeInfo)
+
+
+class DuneJsonTopo(Dune):
+    def set_topo(self, **kwargs):
+        topo = kwargs.get('topo')
+        assertIsFile(topo)
+        self.topo = loadJsonFile(topo)
+
+
+class DuneFatTree(Dune):
+    def set_topo(self, super_spines=1,  pods=3, spines=2, leafs=3, hosts_per_leaf=1, **kwargs):
+        debug(f'Building FatTree with {super_spines} super spines, {pods} pods, {spines} spines per pod, {leafs} leafs per pod and {hosts_per_leaf} hosts per leaf\n')
+        topo = build_fattree_topo(super_spines=super_spines,
+                                  pods=pods,
+                                  spines=spines,
+                                  leafs=leafs,
+                                  hosts_per_leaf=hosts_per_leaf
+                                  )
 
         with open('configs/topos/fattreetopo.json', 'w') as f:
             json.dump(topo, f)

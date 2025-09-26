@@ -55,6 +55,7 @@ HOSTS_PER_LEAF ?= 2
 TEST_PPS ?= 100
 PKT_NUM ?=
 RESULTS_FILE = results_p$(PODS)_ss$(SUPER_SPINES)_s$(SPINES)_l$(LEAFS)_h$(HOSTS_PER_LEAF)_$(TEST_PPS)pps.txt
+SAVE_RESULTS ?= YES
 
 TOPO_ARGS := models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
@@ -131,14 +132,19 @@ all: build
 
 .PHONY: run
 run: build | $(RUN_DIRS)
-	$(MN) $(MN_ARGS) 2>&1 | tee $(LOG_DIR)/mn.log 
+	bash -o pipefail -c '$(MN) $(MN_ARGS) 2>&1 | tee "$(LOG_DIR)/mn.log"; ec=$$?; if grep -qE "Traceback|Caught exception" "$(LOG_DIR)/mn.log"; then exit 1; else exit $$ec; fi'
 
 .PHONY: results
 results: 
 	   $(PROCESS_PCAPS)
-	   $(COMPUTE_SCORES) 2>&1 > $(RESULTS_FILE)
+	   $(COMPUTE_SCORES) > $(RESULTS_FILE) 2>&1
 	   $(ARCHIVE_EXPERIMENT)
+ifeq ($(SAVE_RESULTS),YES)
 	   $(DB_SAVE)
+	   @echo Saving results to DB
+else
+	   @echo Skipping saving results to DB
+endif
 
 .PHONY: run-test
 run-test: override MN_ARGS += --test=tonfattree
