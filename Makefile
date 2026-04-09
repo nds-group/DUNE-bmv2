@@ -134,8 +134,27 @@ DB_SAVE :=  python utils/insert_to_db.py \
 all: build
 
 
+PCAPS_GENERATED := $(wildcard $(TEST_PCAP_DIR)/TON-IOT_*.pcap)
+ifeq ($(PCAPS_GENERATED),)
+FORCE_PREPARE = FORCE
+endif
+
+$(TEST_PCAP_DIR)/.pcaps_prepared: ./utils/prepare_pcap_traces.py $(TEST_PCAP) $(GROUND_TRUTH_FILE) $(FORCE_PREPARE)
+	python3 ./utils/prepare_pcap_traces.py
+	@if ! ls $(TEST_PCAP_DIR)/TON-IOT_*.pcap >/dev/null 2>&1; then \
+		echo "Error: No matching pcap files found in $(TEST_PCAP_DIR)."; \
+		exit 1; \
+	fi
+	@touch $@
+
+FORCE:
+
+$(TEST_PCAP) $(GROUND_TRUTH_FILE):
+	@echo "Error: Required file $@ not found. Please provide it or update the configuration."
+	@exit 1
+
 .PHONY: run
-run: build | $(RUN_DIRS)
+run: build $(TEST_PCAP) $(GROUND_TRUTH_FILE) | $(RUN_DIRS)
 	bash -o pipefail -c '$(MN) $(MN_ARGS) 2>&1 | tee "$(LOG_DIR)/mn.log"; ec=$$?; if grep -qE "Traceback|Caught exception" "$(LOG_DIR)/mn.log"; then exit 1; else exit $$ec; fi'
 
 .PHONY: results
@@ -152,7 +171,7 @@ endif
 
 .PHONY: run-test
 run-test: override MN_ARGS += --test=tonfattree
-run-test: run
+run-test: $(TEST_PCAP_DIR)/.pcaps_prepared run
 	$(MAKE) results
 
 .PHONY: run-smoke-test
