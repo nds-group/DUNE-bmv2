@@ -156,6 +156,10 @@ run-linear-test: override MN_ARGS := $(MN_CUSTOM) --topo=$(MN_TOPO_CLASS),$(call
 run-linear-test: run
 	$(MAKE) results
 
+.PHONY: run-table-5
+run-table-5:
+	$(MAKE) run-test PODS=3 SPINES=4 LEAFS=4 SUPER_SPINES=1 HOSTS_PER_LEAF=2 TEST_PPS=100
+
 .PHONY: stop
 stop:
 	$(MN) -c
