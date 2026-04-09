@@ -134,15 +134,23 @@ DB_SAVE :=  python utils/insert_to_db.py \
 all: build
 
 
-PCAPS_GENERATED := $(wildcard $(TEST_PCAP_DIR)/TON-IOT_*.pcap)
-ifeq ($(PCAPS_GENERATED),)
+EXPECTED_PCAPS := $(shell awk -F'=' '/^number_of_hosts/ {gsub(/[ \t]+/, "", $$2); print $$2}' utils/params.ini)
+ACTUAL_PCAPS := $(words $(wildcard $(TEST_PCAP_DIR)/TON-IOT_*.pcap))
+
+ifneq ($(EXPECTED_PCAPS),$(ACTUAL_PCAPS))
 FORCE_PREPARE = FORCE
 endif
 
-$(TEST_PCAP_DIR)/.pcaps_prepared: ./utils/prepare_pcap_traces.py $(TEST_PCAP) $(GROUND_TRUTH_FILE) $(FORCE_PREPARE)
-	python3 ./utils/prepare_pcap_traces.py
-	@if ! ls $(TEST_PCAP_DIR)/TON-IOT_*.pcap >/dev/null 2>&1; then \
-		echo "Error: No matching pcap files found in $(TEST_PCAP_DIR)."; \
+$(TEST_PCAP_DIR)/.pcaps_prepared: ./utils/prepare_pcap_traces.py utils/params.ini $(TEST_PCAP) $(GROUND_TRUTH_FILE) $(FORCE_PREPARE)
+	@if [ "$(EXPECTED_PCAPS)" -eq "$(ACTUAL_PCAPS)" ] && [ -n "$$(ls $(TEST_PCAP_DIR)/TON-IOT_*.pcap 2>/dev/null)" ] && [ ! utils/params.ini -nt $$(ls -t $(TEST_PCAP_DIR)/TON-IOT_*.pcap | head -1) ]; then \
+		echo "Pcaps are already generated and up to date. Skipping generation."; \
+	else \
+		echo "Generating $(EXPECTED_PCAPS) pcap traces..."; \
+		python3 ./utils/prepare_pcap_traces.py; \
+	fi
+	@ACTUAL=$$(ls -1 $(TEST_PCAP_DIR)/TON-IOT_*.pcap 2>/dev/null | wc -l); \
+	if [ "$$ACTUAL" -ne "$(EXPECTED_PCAPS)" ]; then \
+		echo "Error: Expected $(EXPECTED_PCAPS) pcap files, but found $$ACTUAL in $(TEST_PCAP_DIR)."; \
 		exit 1; \
 	fi
 	@touch $@
