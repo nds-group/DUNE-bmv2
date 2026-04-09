@@ -86,24 +86,31 @@ def get_feature_codes_with_ranges(feature_table, num_of_trees):
             ].columns[0:]
         ].apply(lambda x: "".join(x.dropna().astype(str)), axis=1)
         Codes[colname] = ["0b" + x for x in Codes[colname]]
-    feature_table["Range"] = [0] * len(feature_table)
-    feature_table["Range"].loc[0] = "0," + str(feature_table["Threshold"].loc[0])
-    for i in range(1, len(feature_table)):
-        if i == (len(feature_table)) - 1:
-            feature_table["Range"].loc[i] = (
-                str(feature_table["Threshold"].loc[i])
-                + ","
-                + str(feature_table["Threshold"].loc[i])
-            )
+
+    # Create a list to hold the range strings
+    range_list = []
+    thresholds = feature_table["Threshold"].values
+    num_rows = len(thresholds)
+
+    for i in range(num_rows):
+        if i == 0:
+            # First row: 0 to first threshold
+            range_str = f"0,{thresholds[0]}"
+        elif i == num_rows - 1:
+            # Last row: threshold to threshold (as per your logic)
+            range_str = f"{thresholds[i]},{thresholds[i]}"
         else:
-            feature_table["Range"].loc[i] = (
-                str(feature_table["Threshold"].loc[i - 1] + 1)
-                + ","
-                + str(feature_table["Threshold"].loc[i])
-            )
+            # Middle rows: prev+1 to current
+            range_str = f"{thresholds[i-1] + 1},{thresholds[i]}"
+
+        range_list.append(range_str)
+
+    # Assign the list to the column all at once
+    # This automatically sets the dtype to 'object' and avoids .loc issues
+    feature_table["Range"] = range_list
+
     Ranges = feature_table["Range"]
     return Ranges, Codes
-
 
 ## get list of splits crossed to get to leaves
 def retrieve_branches(estimator):
