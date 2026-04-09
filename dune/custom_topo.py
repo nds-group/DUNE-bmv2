@@ -325,6 +325,15 @@ def injectPcaps(net, pcap_dir=None, pps=100, pkt_num=None):
             p = s['proc']
             if p is not None and p.poll() is not None:
                 # Finished current pcap
+                exit_code = p.poll()
+                if exit_code != 0:
+                    out, err = p.communicate()
+                    error_msg = f"tcpreplay on {name} failed with exit code {exit_code}. pcap: {s['pcap']}."
+                    if err:
+                        error_msg += f" Stderr: {err.decode()}"
+                    from mininet.log import error
+                    error(error_msg + '\\n')
+                    raise RuntimeError(error_msg)
                 s['proc'] = None
                 s['pcap'] = None
             if s['proc'] is None and to_assign:
@@ -401,8 +410,14 @@ class DuneCLI(CLI):
 
         host = self.mn.get(hostName)
         cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps} {pcap}'
-        info(f'  {host.name}: {cmd}\n')
-        host.cmd(cmd)
+        info(f'  {host.name}: {cmd}\\n')
+        out = host.cmd(cmd)
+        status = host.cmd('echo $?').strip()
+        if status != '0':
+            error_msg = f"tcpreplay on {host.name} failed with exit code {status}. Output: {out}"
+            from mininet.log import error
+            error(error_msg + '\\n')
+            raise RuntimeError(error_msg)
 
 
 def injectParallelTraffic(net):
@@ -428,8 +443,14 @@ def injectLinearTraffic(net):
     cmd = f'tcpreplay -i {host.defaultIntf()} --pps {pps}'
     cmd += f' --limit {pkt_num}' if pkt_num else ''
     cmd += f' {pcap}'
-    info(f'  {host.name}: {cmd}\n')
-    host.cmd(cmd)
+    info(f'  {host.name}: {cmd}\\n')
+    out = host.cmd(cmd)
+    status = host.cmd('echo $?').strip()
+    if status != '0':
+        error_msg = f"tcpreplay on {host.name} failed with exit code {status}. Output: {out}"
+        from mininet.log import error
+        error(error_msg + '\\n')
+        raise RuntimeError(error_msg)
 
 
 

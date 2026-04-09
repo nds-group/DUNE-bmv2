@@ -316,7 +316,7 @@ class Controller():
 def shutdown(sig, frame):
     logging.info('Received %s, shuting down', signal.Signals(sig).name)
     shutdown_event.set()
-    for thread in threads.values():
+    for thread in list(threads.values()):
         thread.join()
 
 class Server():

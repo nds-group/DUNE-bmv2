@@ -151,6 +151,11 @@ run-test: override MN_ARGS += --test=tonfattree
 run-test: run
 	$(MAKE) results
 
+.PHONY: run-smoke-test
+run-smoke-test: override PKT_NUM := 1000
+run-smoke-test: override MN_ARGS := $(MN_CUSTOM) --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS_LINEAR)) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK) $(MN_LOG_LEVEL) --test=tonlinear
+run-smoke-test: run
+
 .PHONY: run-linear-test
 run-linear-test: override MN_ARGS := $(MN_CUSTOM) --topo=$(MN_TOPO_CLASS),$(call join_with_comma,$(TOPO_ARGS_LINEAR)) $(MN_HOST) $(MN_SWITCH) $(MN_CONTROLLER) $(MN_LINK) $(MN_LOG_LEVEL) --test=tonlinear
 run-linear-test: run
