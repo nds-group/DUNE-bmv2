@@ -429,7 +429,7 @@ def injectParallelTraffic(net):
     info('*** All replays finished. Waiting for controller to finish.\n')
 
 def injectLinearTraffic(net):
-    pcap = getattr(net.topo, 'test_pcap', '/nas_storage/shared/MetaCom/data/edited_nopayload/ToN_IoT_test.pcap')
+    pcap = getattr(net.topo, 'test_pcap', './data/ToN_IoT_test.pcap')
     pps = getattr(net.topo, 'test_pps', 100)
     pkt_num = getattr(net.topo, 'pkt_num', None)
     hostName = 'p0_h0_0'

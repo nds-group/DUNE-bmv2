@@ -12,6 +12,10 @@ pcaps
 utils/experiment_pcaps*
 utils/merged_pcaps
 
+configs/topos/fattreetopo.json
+
+data/
+
 16-10-05.pcap
 ToN_IoT_test.pcap
 utils/experiment_pcaps

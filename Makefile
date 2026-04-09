@@ -18,7 +18,7 @@ SOURCES := $(wildcard $(SOURCES_DIR)/*.p4)
 OBJECTS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.json)
 DEPS := $(SOURCES:$(SOURCES_DIR)/%.p4=$(OBJECTS_DIR)/%.d)
 COMBINED_PCAPS_FILE := ./pcaps/combined.csv
-GROUND_TRUTH_FILE := /nas_storage/shared/ToN-IoT/ToN_IoT_Test_Flow_PktCounts.csv 
+GROUND_TRUTH_FILE ?= ./data/ToN_IoT_Test_Flow_PktCounts.csv
 
 
 
@@ -53,11 +53,13 @@ LEAFS ?= 6
 PODS ?= 4
 HOSTS_PER_LEAF ?= 2
 TEST_PPS ?= 100
+TEST_PCAP ?= ./data/ToN_IoT_test.pcap
+TEST_PCAP_DIR ?= ./utils/experiment_pcaps
 PKT_NUM ?=
 RESULTS_FILE = results_p$(PODS)_ss$(SUPER_SPINES)_s$(SPINES)_l$(LEAFS)_h$(HOSTS_PER_LEAF)_$(TEST_PPS)pps.txt
 SAVE_RESULTS ?= YES
 
-TOPO_ARGS := models=$(MODELS) \
+TOPO_ARGS = models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
@@ -71,11 +73,13 @@ TOPO_ARGS := models=$(MODELS) \
 			 leafs=$(LEAFS) \
 			 hosts_per_leaf=$(HOSTS_PER_LEAF)
 
-TOPO_ARGS_LINEAR := models=$(MODELS) \
+TOPO_ARGS_LINEAR = models=$(MODELS) \
 			 models_dir=$(MODELS_DIR) \
 			 objects_dir=$(OBJECTS_DIR) \
 			 log_dir=$(LOG_DIR) \
 			 pcap_dir=$(PCAP_DIR) \
+			 test_pcap=$(TEST_PCAP) \
+			 test_pcap_dir=$(TEST_PCAP_DIR) \
 			 test_pps=$(TEST_PPS) \
 			 pkt_num=$(PKT_NUM) \
 			 super_spines=1 \
