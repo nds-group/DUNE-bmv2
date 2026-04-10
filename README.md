@@ -58,3 +58,20 @@ For more detailed information regarding the project's architecture, workflows, c
 - [Project Structure & Architecture](docs/project-structure.md)
 - [Workflows & Targets](docs/workflows.md)
 - [Troubleshooting & Debugging](docs/troubleshooting.md)
+
+## Citation
+If you use this code or framework in your research, please kindly cite our INFOCOM 2025 paper:
+
+```bibtex
+@INPROCEEDINGS{11044678,
+  author={Bütün, Beyza and De Andres Hernandez, David and Gucciardo, Michele and Fiore, Marco},
+  booktitle={IEEE INFOCOM 2025 - IEEE Conference on Computer Communications}, 
+  title={DUNE: Distributed Inference in the User Plane}, 
+  year={2025},
+  volume={},
+  number={},
+  pages={1-10},
+  keywords={Sequential analysis;Accuracy;Computational modeling;Scalability;Memory management;Machine learning;Hardware;Delays;Resource management;Monitoring},
+  doi={10.1109/INFOCOM55648.2025.11044678}
+}
+```
